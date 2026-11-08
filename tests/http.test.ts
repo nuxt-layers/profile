@@ -20,7 +20,7 @@ import {
   provideProfileNotifier,
   provideProfileRequestCoordinator,
   provideProfileSubjectResolver,
-} from '../server/utils/profile-composition'
+} from '../server/internal/composition'
 import { applyProfileIdentityEvent, listProfileLegalHolds, placeProfileLegalHold, profileLegalHoldParts, runProfileMaintenance, updateProfile } from '../server/utils/profile-server'
 import { createLocalProfileKeyWrapper } from '../server/utils/profile-keys'
 import { createTestDatabase, hasDatabase, requireDatabaseInCi } from './support/database'

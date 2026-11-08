@@ -1,13 +1,13 @@
 /*
- * Tailwind source registration for @nuxt4-layers/profile.
+ * Tailwind source registration for @nuxt-layers/profile.
  *
  * The layer's components use the SemanticPresentationTheme utility vocabulary
  * (bg-fill-*, text-pen-*, border-edge-*). Tailwind does not scan installed
  * packages, so a host imports this file into the stylesheet that imports
  * Tailwind, e.g.:
  *
- *   @import "@nuxt4-layers/theme-manager/presentation.css";
- *   @import "@nuxt4-layers/profile/tailwind.css";
+ *   @import "@nuxt-layers/theme-manager/presentation.css";
+ *   @import "@nuxt-layers/profile/tailwind.css";
  */
 @source "./presentation/components";
 @source "./presentation/pages";

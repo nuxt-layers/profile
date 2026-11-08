@@ -1,6 +1,6 @@
 /**
- * Public presentation surface of `@nuxt4-layers/profile`
- * (`@nuxt4-layers/profile/presentation`).
+ * Public presentation surface of `@nuxt-layers/profile`
+ * (`@nuxt-layers/profile/presentation`).
  *
  * The default pages and components depend on the contract and the client
  * API (`useProfile()`) only, and decide nothing: every request is decided

@@ -207,7 +207,7 @@ function candidates(): string[] {
 async function compileWithThemeManager(classes: string[]): Promise<string> {
   const require = createRequire(import.meta.url)
   const { compile } = await import(require.resolve('@tailwindcss/node', { paths: [dirname(require.resolve('tailwindcss/package.json'))] }))
-  const presentation = require.resolve('@nuxt4-layers/theme-manager/presentation.css')
+  const presentation = require.resolve('@nuxt-layers/theme-manager/presentation.css')
   const compiler = await compile(`@import ${JSON.stringify(presentation)};`, { base: dirname(presentation), onDependency: () => {} })
   return compiler.build(classes)
 }

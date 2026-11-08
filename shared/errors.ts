@@ -48,7 +48,7 @@ export class ProfileCompositionError extends Error {
   readonly port: string
 
   constructor(port: string) {
-    super(`Profile port '${port}' has not been supplied by the host application. See docs/composition-contract.md.`)
+    super(`Profile port '${port}' has not been supplied by the host application. See CONTRACT.md.`)
     this.name = 'ProfileCompositionError'
     this.port = port
   }

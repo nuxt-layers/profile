@@ -30,7 +30,7 @@ describe('Profile public contract', () => {
   })
 
   it('never names a driver, key service or other capability\'s package', () => {
-    const forbidden = /^pg$|kysely|drizzle|@aws-sdk|@google-cloud|@azure|^@nuxt4-layers\/|^node:|^#|^h3$|^vue$|^nuxt/
+    const forbidden = /^pg$|kysely|drizzle|@aws-sdk|@google-cloud|@azure|^@nuxt-layers\/|^node:|^#|^h3$|^vue$|^nuxt/
     for (const file of contractFiles) {
       for (const target of imports(file)) expect(forbidden.test(target), `${file} imports ${target}`).toBe(false)
     }

@@ -14,10 +14,10 @@ import type {
   VerifiableAttribute,
 } from '../../contracts'
 import { ProfileFailure } from '../../contracts'
-import { runProfileMigrations } from '../database/migrations'
 import type { DepartureExport, OwnProfile } from '../internal/service'
 import { createService } from '../internal/service'
 import {
+  profileMigrationsDone,
   useProfileAccessDecision,
   useProfileClock,
   useProfileDatabase,
@@ -26,35 +26,19 @@ import {
   useProfileNotifier,
   useProfileRetention,
   useProfileRequestCoordinator,
-} from './profile-composition'
+} from '../internal/composition'
 
 /**
  * PUBLIC server functions (auto-imported for the host's server code). Each
  * takes the person (`subjectId`) or the viewer (`viewerId`) from the caller,
  * which must take it from the signed-in principal, never from a request
  * body. Every one fails closed with `ProfileFailure`. Every time they keep
- * or judge comes from the host's clock (`provideProfileClock`), or the
+ * or judge comes from the host's clock (`composeProfile`'s `clock`), or the
  * system clock when none is supplied.
  */
 
-let migration: Promise<string[]> | null = null
-
-/**
- * Applies pending migrations to Profile's schema, through the migration pool
- * when supplied (then granting the runtime role). Call once from the host's
- * Nitro plugin after `provideProfileDatabase`; operations wait for it.
- */
-export function migrateProfileDatabase(): Promise<string[]> {
-  const database = useProfileDatabase()
-  migration = runProfileMigrations(database.migrationPool ?? database.pool, database.schema, database.runtimeRole)
-  migration.catch((error) => {
-    console.error('[profile] database migrations failed:', error instanceof Error ? error.message : error)
-  })
-  return migration
-}
-
 async function service() {
-  if (migration) await migration.catch(() => { throw new ProfileFailure('unavailable', 'migrations failed') })
+  await profileMigrationsDone()
   const database = useProfileDatabase()
   return createService({
     pool: database.pool,

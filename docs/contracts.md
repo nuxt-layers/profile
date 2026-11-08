@@ -1,8 +1,10 @@
-# Profile Contract (version 1)
+# Profile Specification (contract version 1)
 
-`@nuxt4-layers/profile/contracts` is the only supported import path for this capability's types and pure helpers. It imports nothing but `zod`: no driver, key service or other capability's package.
+> **In short:** the detailed rules behind Profile's public contract, for maintainers. Hosts compose from [`CONTRACT.md`](../CONTRACT.md) alone.
 
-Profile answers two questions: **what describes this person**, and **what may this viewer see of it, now?** It is the only canonical source of the personal data that describes a person. Authentication never stores or seeds it ([IAM architecture](https://github.com/nuxt4-layers/iam-integration/blob/f2dcec8afd27bec5f0a40d73e652dc4644d6ad4c/docs/architecture.md) §1).
+`@nuxt-layers/profile/contracts` is the only supported import path for this capability's types and pure helpers. It imports nothing but `zod`: no driver, key service or other capability's package.
+
+Profile answers two questions: **what describes this person**, and **what may this viewer see of it, now?** It is the only canonical source of the personal data that describes a person. Authentication never stores or seeds it (IAM architecture §1 ([resources](../RESOURCES.md))).
 
 ## 1. Boundaries
 
@@ -67,7 +69,7 @@ A display name is returned as a code, never as text the host must translate: `{ 
 
 ### 5.1 Departure data policy
 
-When Identity announces `membership.ended`, Profile keeps how the leaver will be shown in that group ([joining and leaving](https://github.com/nuxt4-layers/iam-integration/blob/f2dcec8afd27bec5f0a40d73e652dc4644d6ad4c/docs/processes/joining-and-leaving.md)):
+When Identity announces `membership.ended`, Profile keeps how the leaver will be shown in that group (joining and leaving ([resources](../RESOURCES.md))):
 
 - the display name fellow members could see at that moment, encrypted with the leaver's key (null if they could see none);
 - a pseudonym number, unique and stable within the group;
@@ -122,6 +124,8 @@ Profile consumes `identity.provisioned`, `membership.ended`, `identity.closed`, 
 
 ## 9. Ports
 
+Each is passed to `composeProfile` under its key (`database`, `keyWrapper`, `disclosureContext`, `subjectResolver`, `requestCoordinator`, `accessDecision`, `notifier`, `clock`).
+
 | Port | Required | Purpose |
 |---|---|---|
 | `ProfileDatabase` | Yes | PostgreSQL pool (runtime role), schema, and optionally the migration pool and the runtime role to grant |
@@ -143,7 +147,7 @@ Profile's permission, for the host to add to Authorisation's catalogue (`PROFILE
 
 | Function | Does |
 |---|---|
-| `migrateProfileDatabase()` | Applies migrations through the migration pool, granting the runtime role data access only |
+| `composeProfile(composition)` | Supplies every port in one call (ADR-0012 §1) and applies migrations through the migration pool, granting the runtime role data access only. The only way to compose Profile; the per-port registry is private (`server/internal/composition.ts`). All or nothing: a missing required port (`database`, `keyWrapper`, `disclosureContext`), an invalid port or an unknown option throws and leaves nothing supplied |
 | `getOwnProfile({ subjectId })` | The person's own record, settings and `version` (0 before anything is stored); null once erased |
 | `updateProfile({ subjectId, changes, correlationId, expectedVersion? })` | §3; with `expectedVersion`, `conflict` if the record changed since |
 | `setProfileDisclosure({ subjectId, settings, correlationId, expectedVersion? })` | §4; likewise |
@@ -173,7 +177,9 @@ The caller supplies `subjectId` and `viewerId` from the signed-in principal, nev
 
 ## 11. Versioning
 
-This is contract version 1, provided by package 1.0, and frozen for 1.x. From 1.0 the package follows [semantic versioning](https://semver.org/): a change that breaks the contract (a removed or narrowed type, function, endpoint, event or port, or a stricter rule a host must act on) needs a new contract version and a major release; an addition is a minor release; a fix is a patch. Each release is listed in `CHANGELOG.md`. Package 0.2 adds the HTTP API (§12), record versions, the `insufficient-assurance`, `conflict` and `rate-limited` codes and the subject-resolver port, without changing what version 0.1 provided. Package 0.3 adds the presentation (§13), without changing the contract. Package 0.4 adds data-subject requests and legal holds (§14), contact-detail verification (§15), the `administration` purpose, the membership's standing in the group context, Profile's permission and three optional ports. The optional clock port (§16) is an addition that changes nothing a client may rely on. End of life (§17) adds the `profile.group-disposed` and `profile.retention-applied` events, two handled Identity events, `provideProfileRetention` and `PROFILE_RETENTION_BOUNDS`, and `retention` counts from `runProfileMaintenance`, with migration `0004_retention`; nothing a client relies on changes. It changes one thing a client may rely on: `email_verified` and `phone_number_verified` may now be `true`.
+This is contract version 1. During development, formal releases and tags are suspended (ADR-0008 ([resources](../RESOURCES.md))): consumers follow `master`, and the contract version, not a package version, describes interface compatibility. A change that breaks the contract (a removed or narrowed type, function, endpoint, event or port, or a stricter rule a host must act on) raises the contract version in `capability.json` and is recorded in `CHANGELOG.md` and [`CONTRACT.md`](../CONTRACT.md) in the same change. Additions keep the version. The `1.0.0` entry in `CHANGELOG.md` and the package version are historical development metadata, not a release consumers pin.
+
+History: package 0.2 added the HTTP API (§12), record versions, the `insufficient-assurance`, `conflict` and `rate-limited` codes and the subject-resolver port; 0.3 the presentation (§13); 0.4 data-subject requests and legal holds (§14), contact-detail verification (§15), the `administration` purpose and Profile's permission; then the optional clock port (§16) and end of life (§17), with migration `0004_retention`. Verification means `email_verified` and `phone_number_verified` may be `true`.
 
 ## 12. HTTP API
 
@@ -237,7 +243,7 @@ It renders "Member" on the server and until the answer arrives, and whenever Pro
 
 **Text.** Every word comes from `presentation/messages.ts` (en-GB) through `useProfileText()`. Hosts change wording or add locales in `app.config.ts` under `profile.messages`, set the locale with `NUXT_PUBLIC_PROFILE_LOCALE`, and point `profile.routes.signIn` (`NUXT_PUBLIC_PROFILE_ROUTES_SIGN_IN`) at their sign-in page, to which the pages link with `?redirect=`. Validation failures and conflicts are explained from the error's `reason` (`profile.reason.*`), otherwise from its code.
 
-**Styling.** The pages style only through Theme Manager's SemanticPresentationTheme vocabulary (`profileClasses`), its public `presentation.css` and its size scales, never raw colours or Tailwind's default sizes; a host imports `@nuxt4-layers/profile/tailwind.css` after Theme Manager's stylesheet. Fill, Pen and Edge of one surface share role and state. The deliberate exceptions, the same as Identity's and Authentication's, which a host's theme must keep legible:
+**Styling.** The pages style only through Theme Manager's SemanticPresentationTheme vocabulary (`profileClasses`), its public `presentation.css` and its size scales, never raw colours or Tailwind's default sizes; a host imports `@nuxt-layers/profile/tailwind.css` after Theme Manager's stylesheet. Fill, Pen and Edge of one surface share role and state. The deliberate exceptions, the same as Identity's and Authentication's, which a host's theme must keep legible:
 
 - `pen-muted-default` on `fill-base-default`: hints, notes and definition terms on the card;
 - `edge-error-default` on `fill-input-default`: an invalid field's border;
@@ -247,7 +253,7 @@ It renders "Member" on the server and until the answer arrives, and whenever Pro
 
 ## 14. Data-subject requests and legal holds
 
-Profile is the person's single point of contact for requests about their data ([iam-integration's process](https://github.com/nuxt4-layers/iam-integration/blob/91907176035bef4465cfe89c71b2dcd9353d2cc7/docs/processes/data-subject-requests.md)). It records each request and each member's part, and keeps legal holds; each member answers for what it holds.
+Profile is the person's single point of contact for requests about their data (iam-integration's process ([resources](../RESOURCES.md))). It records each request and each member's part, and keeps legal holds; each member answers for what it holds.
 
 | Type | Who opens it | Parts by default | What happens |
 |---|---|---|---|
@@ -278,7 +284,7 @@ The person verifies a saved `email` or `phone_number`: Profile sends a 6-digit c
 
 ## 16. Time
 
-Profile reads the current time from the clock the host supplies (`provideProfileClock({ now })`), as [iam-integration's architecture §7](https://github.com/nuxt4-layers/iam-integration/blob/e986245d746507bf7093ca203e346ab1b571e3a8/docs/architecture.md#7-time) asks of every member; without one, it uses the system clock. A host supplies the same clock to every member, or none.
+Profile reads the current time from the clock the host supplies (`composeProfile({ clock: { now } })`), as iam-integration's architecture §7 ([resources](../RESOURCES.md)) asks of every member; without one, it uses the system clock. A host supplies the same clock to every member, or none.
 
 - Every time Profile keeps or judges comes from the clock: the times it writes (records, keys, erasures, departures, requests, parts, holds, closures, codes, the outbox) and events' `occurredAt`; when a hold, a request's due date or escalation, an access archive, a verification code or its sending window, and a lookup rate-limit window ends; and whether a sign-in is recent enough for the endpoints that need one. The database judges no time of its own: each such time is passed to it from the clock.
 - A clock that throws, or answers anything but a valid `Date`, fails the operation as `unavailable`. Profile never falls back to another time.
@@ -286,11 +292,11 @@ Profile reads the current time from the clock the host supplies (`provideProfile
 
 ## 17. End of life
 
-Profile's part of iam-integration's [group deletion](https://github.com/nuxt4-layers/iam-integration/blob/b70beb5158163091a0ce47447fd19c26b3cee1a3/docs/processes/group-deletion.md) and [retention](https://github.com/nuxt4-layers/iam-integration/blob/b70beb5158163091a0ce47447fd19c26b3cee1a3/docs/processes/retention.md) processes.
+Profile's part of iam-integration's group deletion and retention processes ([resources](../RESOURCES.md)).
 
 **A deleted group.** On Identity's `group.deleted` with `disposal: 'due'`, or on `group.disposal-due` once a hold on the group or its tenant has ended (`group.deleted` with `disposal: 'deferred'` is ignored), Profile removes the group's departure records and, once none is left, its pseudonym counter; it keeps the departure of anyone a legal hold on Profile's part covers. A data-subject request naming the group no longer needs its rename: the group's part of it is done. It writes `profile.group-disposed`, which the host relays to Identity as Profile's confirmation.
 
 **Re-homing.** Profile keeps every record in the one store the host composes, whatever the person's home tenant, so `identity.rehomed` needs nothing from it. A host that keeps people's records in different data regions composes one Profile per region, and moving a record between them is the host's migration; Profile does not yet place records by region.
 
-**Retention.** `runProfileMaintenance` also deletes delivered outbox events after `outboxDays` (30, within 7 to 365), completed data-subject requests after `requestDays` (730, within 365 to 2555) unless a legal hold covers the person, and ended legal holds after `endedHoldDays` (365, within 30 to 2555). A host sets them with `provideProfileRetention`, within `PROFILE_RETENTION_BOUNDS`; shorter than a default needs a `riskTreatment` reference. Requests and holds are records the runtime role cannot delete: only the owner's `apply_retention` function deletes them, and it never goes below the hard bounds. A run that deleted anything writes `profile.retention-applied` with counts only.
+**Retention.** `runProfileMaintenance` also deletes delivered outbox events after `outboxDays` (30, within 7 to 365), completed data-subject requests after `requestDays` (730, within 365 to 2555) unless a legal hold covers the person, and ended legal holds after `endedHoldDays` (365, within 30 to 2555). A host sets them with `composeProfile`'s `retention`, within `PROFILE_RETENTION_BOUNDS`; shorter than a default needs a `riskTreatment` reference. Requests and holds are records the runtime role cannot delete: only the owner's `apply_retention` function deletes them, and it never goes below the hard bounds. A run that deleted anything writes `profile.retention-applied` with counts only.
 

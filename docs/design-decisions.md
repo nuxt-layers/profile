@@ -1,5 +1,7 @@
 # Design Decisions
 
+> **In short:** the choices made in Profile's design round, with the alternatives considered.
+
 Decisions taken in Profile's design round, with the alternatives considered.
 
 ## 1. Scope of the first round

@@ -33,6 +33,8 @@
     "dev:prepare": "nuxt prepare",
     "dev": "nuxt dev playground",
     "build:playground": "nuxt build playground",
+    "build:minimal-host": "nuxt build examples/minimal-host",
+    "smoke:minimal-host": "node examples/minimal-host/smoke.mjs",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test",

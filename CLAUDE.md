@@ -7,6 +7,7 @@ Nuxt foundation layer (built on Nuxt 4) for the personal data that describes a p
 - `pnpm install`, then `pnpm dev:prepare` for Nuxt types. Never add a `prepare`/`postinstall` script: Git installs would then pull devDependencies into hosts
 - `pnpm check` = `nuxt typecheck` + `vitest run`; run it after every code change
 - `pnpm build:playground` proves the layer composes in a host
+- `examples/minimal-host` composes Profile alone within ADR-0012's 50-line budget (`tests/minimal-host.test.ts`, part of `pnpm check`); `pnpm build:minimal-host` then `pnpm smoke:minimal-host` (needs `PROFILE_TEST_DATABASE_URL`). Keep it minimal: stand-ins only where another capability would answer
 - Single test file: `pnpm vitest run tests/<name>.test.ts`
 - `tests/database.test.ts` and `tests/http.test.ts` need `PROFILE_TEST_DATABASE_URL` (admin URL of a local, disposable PostgreSQL 16). They skip locally without it and fail in CI
 - Never edit a released migration in `server/database/migrations.ts`; add a new one

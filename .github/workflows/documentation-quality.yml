@@ -58,6 +58,9 @@ jobs:
       - run: pnpm dev:prepare
       - run: pnpm check
       - run: pnpm build:playground
+      # ADR-0012 §4: the minimal host builds and answers; its budget is checked by pnpm check.
+      - run: pnpm build:minimal-host
+      - run: pnpm smoke:minimal-host
       # The default pages in a real browser, with axe WCAG 2.2 AA checks.
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm exec playwright test

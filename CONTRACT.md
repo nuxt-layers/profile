@@ -35,7 +35,7 @@ export default defineNitroPlugin(() => {
 })
 ```
 
-The `provide*` functions and server functions are Nitro auto-imports. Types and pure helpers come only from `@nuxt-layers/profile/contracts`, which imports nothing but `zod`. Other public entry points: `@nuxt-layers/profile/capability` (the manifest), `@nuxt-layers/profile/presentation` and `@nuxt-layers/profile/tailwind.css`. Every other path, including `server/internal` and `server/database`, is private.
+`examples/minimal-host` in this repository is a complete, tested host within the 50-line budget, supplying the four required ports. The `provide*` functions and server functions are Nitro auto-imports. Types and pure helpers come only from `@nuxt-layers/profile/contracts`, which imports nothing but `zod`. Other public entry points: `@nuxt-layers/profile/capability` (the manifest), `@nuxt-layers/profile/presentation` and `@nuxt-layers/profile/tailwind.css`. Every other path, including `server/internal` and `server/database`, is private.
 
 ## Settings
 

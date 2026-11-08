@@ -50,6 +50,7 @@ Profile may hold the same email address as a sign-in identifier held by Authenti
 - `pnpm install`, then `pnpm dev:prepare`
 - `pnpm check`: typecheck and tests. The PostgreSQL suite needs `PROFILE_TEST_DATABASE_URL` (admin URL of a local, disposable PostgreSQL 16); it skips locally without it and fails in CI
 - `pnpm build:playground`: proves the layer composes in a host
+- `pnpm build:minimal-host`, then `pnpm smoke:minimal-host`: builds [`examples/minimal-host`](examples/minimal-host/server/plugins/profile.ts), the smallest host composing Profile alone, and checks it answers against a disposable database (needs `PROFILE_TEST_DATABASE_URL`). `pnpm check` holds it to ADR-0012's 50-line budget
 - `pnpm test:e2e`: the default pages in a browser with axe. Needs `PROFILE_TEST_DATABASE_URL`; locally set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if Playwright's own browser is not installed
 
 ## Documentation checks

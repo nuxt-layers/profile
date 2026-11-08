@@ -14,7 +14,7 @@
 | 7. End of life | iam-integration's group deletion and retention processes ([resources](RESOURCES.md); [specification](docs/contracts.md) §17): a deleted group's departures and pseudonyms disposed of when Identity says disposal is due, with `profile.group-disposed`; retention of delivered events, completed requests and ended holds (`provideProfileRetention`, migration `0004_retention`) | Complete |
 | 8. Release 1.0 | Contract version 1 and `CHANGELOG.md` | Done (tags `v1.0.0`, `v1.1.0` kept as historical records); further releases suspended by ADR-0008 |
 | 9. Organisation migration | `nuxt-layers` identity, `@nuxt-layers` scope, dependencies on `master`, `CONTRACT.md`, `RESOURCES.md`, `STORAGE-REGISTER.md` and this plan at the root (ADR-0004, ADR-0008, ADR-0010, ADR-0012) | In review |
-| 10. Trivial composition | ADR-0012: `examples/minimal-host` built and smoke-tested in CI within the 50-line budget; PostgreSQL-backed fakes of every port for tests; review of the subject resolver, access decision, mail and scheduled-work ports against the shared shapes (`resolveCaller`, `decide`, `send`, `tasks`) with iam-integration | Next |
+| 10. Trivial composition | ADR-0012: `examples/minimal-host` built and smoke-tested in CI within the 50-line budget (done); composition in one call rather than one `provide*` per port; PostgreSQL-backed fakes of every port for tests; review of the subject resolver, access decision, mail and scheduled-work ports against the shared shapes (`resolveCaller`, `decide`, `send`, `tasks`) with iam-integration | In progress |
 
 ## Dependencies on other capabilities
 

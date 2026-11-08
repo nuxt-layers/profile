@@ -4,6 +4,7 @@
 Nuxt foundation layer (built on Nuxt 4) for the personal data that describes a person (what is held, who may see it, how it is anonymised), under the person's control. A member of the IAM suite (ADR-0005). Governed by `nuxt-layers/architecture-rules` (revision reviewed in `RESOURCES.md`); persistence follows ADR-0002 and ADR-0006. Cross-member processes live in `nuxt-layers/iam-integration`. British spelling everywhere, including code and the manifest.
 
 ## Commands
+- Toolchain (ADR-0013): Node.js 26, pnpm 12 through Corepack (`corepack enable`; version from `packageManager`), TypeScript 6. CI installs Corepack and uses no third-party setup action. Hosts still need only Node.js 22 or later (`engines`): never raise it to match the development baseline
 - `pnpm install`, then `pnpm dev:prepare` for Nuxt types. Never add a `prepare`/`postinstall` script: Git installs would then pull devDependencies into hosts
 - `pnpm check` = `nuxt typecheck` + `vitest run`; run it after every code change
 - `pnpm build:playground` proves the layer composes in a host
@@ -13,7 +14,7 @@ Nuxt foundation layer (built on Nuxt 4) for the personal data that describes a p
 - Never edit a released migration in `server/database/migrations.ts`; add a new one
 - `python3 scripts/check_markdown.py` (the architecture's own check) checks headings, *In short* lines under `docs/`, local links, and that external links appear only in `RESOURCES.md`, pinned; run it after every documentation change
 - Browser tests: `pnpm test:e2e` (builds the playground, then Playwright with axe). Needs `PROFILE_TEST_DATABASE_URL`; locally set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if Playwright's own browser is not installed
-- Theme Manager follows `git+https://github.com/nuxt-layers/theme-manager.git#master` (ADR-0008: dependencies on other layers track `master`, never a tag or commit). The lockfile records the resolved commit as a `codeload.github.com` tarball, never `git@github.com` (CI has no SSH key); refresh it when Theme Manager's `master` moves
+- Theme Manager follows `github:nuxt-layers/theme-manager#master` (ADR-0008: dependencies on other layers track `master`, never a tag or commit). The lockfile records the resolved commit over HTTPS (pnpm 12 writes `repo: https://github.com/...`), never `git@github.com` (CI has no SSH key); refresh it when Theme Manager's `master` moves
 
 ## Rules
 - Profile is the only canonical source of the data that describes a person. Never store sign-in identifiers, credentials, groups, memberships or permissions here: they are Authentication's, Identity's and Authorisation's.

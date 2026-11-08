@@ -2,6 +2,12 @@
 
 > **In short:** major changes to `@nuxt-layers/profile`, newest first. Formal releases are suspended during development (ADR-0008); consumers follow `master`.
 
+## 2026-11-09
+
+- Development toolchain moves to the ADR-0013 baseline: Node.js 26, pnpm 12.16.1 through Corepack, `@types/node` 26 and Nuxt 4.6.3 for development; `zod` ^4.6.7. Hosts' requirements are unchanged (Node.js 22 or later, `nuxt` ^4.5.0).
+- CI sets pnpm up with Corepack instead of a third-party action (ADR-0013 §5). The layer workflow had not started since the move to `nuxt-layers`, most likely because the organisation's Actions policy refuses that action.
+- Theme Manager is declared as `github:nuxt-layers/theme-manager#master`; pnpm 12 records it as an HTTPS Git resolution.
+
 ## 2026-11-08
 
 - `composeProfile(composition)` is now the only way to compose Profile (ADR-0012 §1): one call, all or nothing, then migrations. **Breaking:** the `provide*` functions and `migrateProfileDatabase()` are no longer public; a host passes the same ports under `database`, `keyWrapper`, `disclosureContext`, `subjectResolver` (optional), `requestCoordinator`, `accessDecision`, `notifier`, `clock` and `retention`. New type `ProfileComposition` in `./contracts`.

@@ -47,6 +47,8 @@ Profile may hold the same email address as a sign-in identifier held by Authenti
 
 ## Commands
 
+Development uses Node.js 26 and pnpm 12 through Corepack (`corepack enable`).
+
 - `pnpm install`, then `pnpm dev:prepare`
 - `pnpm check`: typecheck and tests. The PostgreSQL suite needs `PROFILE_TEST_DATABASE_URL` (admin URL of a local, disposable PostgreSQL 16); it skips locally without it and fails in CI
 - `pnpm build:playground`: proves the layer composes in a host

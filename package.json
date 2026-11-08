@@ -1,13 +1,13 @@
 {
-  "name": "@nuxt4-layers/profile",
+  "name": "@nuxt-layers/profile",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Nuxt 4 foundation capability for the personal data that describes a person: what is held, who may see it, and how it is anonymised, under the person's control.",
+  "description": "Nuxt foundation capability for the personal data that describes a person: what is held, who may see it, and how it is anonymised, under the person's control.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nuxt4-layers/profile"
+    "url": "https://github.com/nuxt-layers/profile"
   },
   "exports": {
     ".": "./nuxt.config.ts",
@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
-    "@nuxt4-layers/theme-manager": "git+https://github.com/nuxt4-layers/theme-manager.git#934d1bd33e0731aafea0d454857dc8fbb756ccb2",
+    "@nuxt-layers/theme-manager": "git+https://github.com/nuxt-layers/theme-manager.git#master",
     "@playwright/test": "^1.64.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.6",

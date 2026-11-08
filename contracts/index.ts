@@ -1,9 +1,9 @@
 /**
- * Public contract for the `@nuxt4-layers/profile` capability.
+ * Public contract for the `@nuxt-layers/profile` capability.
  *
  * The only supported cross-layer import path for Profile's types and pure
  * helpers. It imports nothing but `zod`: no Nuxt, Vue, h3, server code,
- * driver, key service or other `@nuxt4-layers/*` package.
+ * driver, key service or other `@nuxt-layers/*` package.
  */
 
 // Identifiers and safe names

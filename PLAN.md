@@ -1,0 +1,24 @@
+# Plan
+
+> **In short:** Profile's planned work and its status. Each phase is delivered as its own pull request with tests, and keeps `pnpm check` green.
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0. Design round | Scope, OIDC attributes, per-attribute disclosure, display name choice, unverified contact details, paused attribution, envelope keys with wrapping-key rotation ([design decisions](docs/design-decisions.md)) | Complete |
+| 1. Foundation and storage | Package, manifest, public contract (record, disclosure, departure policy, events, errors, ports), composition registry (fail closed), PostgreSQL schema with runtime-role grants, per-person envelope encryption, key rotation, Identity event handling (provisioning, departures, closure), erasure, export, transactional outbox, docs, threat model, CI, playground | Complete |
+| 2. Administration | `/api/profile/*` endpoints for the person's own record, disclosure and departure choices, export, and display-name lookups for the host's pages; subject-resolver port; origin check; recent sign-in for export and contact details; record versions against lost updates; per-viewer lookup rate limit; no erasure endpoint; `useProfile()` for the user experience only | Complete |
+| 3. Default pages | Accessible (WCAG 2.2 AA), localisable own-profile page (details, disclosure, display name, departure choice, data download) and person page through Theme Manager's `SemanticPresentationTheme` vocabulary; movable or disabled; framing, caching and referrer headers; `ProfilePersonName` with batched, browser-only lookups for the host's `IdentityPersonName`; browser tests with axe in CI | Complete |
+| 4. Requests and verification | Data-subject request coordination and legal holds (iam-integration's process: requests and parts, the coordination port, archives sealed with the person's key, holds deferring erasure on closure, escalation); contact-detail verification through a notification port (one-time codes as keyed digests bound to the value); an `administration` lookup naming suspended members to a group's administrators through Authorisation (`profile.suspended-people:view`, high), and the membership's own standing in the group context; departures and requests pages, `ProfileGroupName` backed by Identity's names through the host; the missing `presentation/pairings.ts` restored ([design decisions](docs/design-decisions.md) §10) | Complete |
+| 5. Host integration | Composition into `platform-test-harness` with Identity's disclosure port and events through iam-integration's adapters; the harness's `IdentityPersonName` backed by `ProfilePersonName`; phase 4's ports, holds and `ProfileGroupName` composed there | Complete |
+| 6. Clock | The optional clock port of iam-integration's architecture §7 ([resources](RESOURCES.md)) (`provideProfileClock`, `ProfileClock`): every time Profile keeps or judges (timestamps, events' `occurredAt`, holds, due dates, archives, codes, rate-limit windows, recent sign-in) from the host's clock or the system clock, passed to the database as a parameter; an invalid answer fails closed as `unavailable`; recorded as a host-supplied trust in the threat model (T31) | Complete |
+| 7. End of life | iam-integration's group deletion and retention processes ([resources](RESOURCES.md); [specification](docs/contracts.md) §17): a deleted group's departures and pseudonyms disposed of when Identity says disposal is due, with `profile.group-disposed`; retention of delivered events, completed requests and ended holds (`provideProfileRetention`, migration `0004_retention`) | Complete |
+| 8. Release 1.0 | Contract version 1 and `CHANGELOG.md` | Done (tags `v1.0.0`, `v1.1.0` kept as historical records); further releases suspended by ADR-0008 |
+| 9. Organisation migration | `nuxt-layers` identity, `@nuxt-layers` scope, dependencies on `master`, `CONTRACT.md`, `RESOURCES.md`, `STORAGE-REGISTER.md` and this plan at the root (ADR-0004, ADR-0008, ADR-0010, ADR-0012) | In review |
+| 10. Trivial composition | ADR-0012: `examples/minimal-host` built and smoke-tested in CI within the 50-line budget; PostgreSQL-backed fakes of every port for tests; review of the subject resolver, access decision, mail and scheduled-work ports against the shared shapes (`resolveCaller`, `decide`, `send`, `tasks`) with iam-integration | Next |
+
+## Dependencies on other capabilities
+
+- **Identity** issues the identifiers, announces provisioning, departures and closure, and answers the disclosure-context port.
+- **Authentication** supplies the signed-in principal whose identifier is the subject or viewer. It is never a source of profile data.
+- **Authorisation** answers whether a viewer may see a group's suspended members (`profile.suspended-people:view`), and exports and erases its own part of a person's data.
+- **Authentication** exports its own part of a person's data (sign-in identifiers, factors, sessions); it is never a source of profile data.

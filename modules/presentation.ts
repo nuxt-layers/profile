@@ -40,7 +40,7 @@ const PAGES: { key: keyof ProfilePagePaths, file: string, parameter?: string }[]
 ]
 
 export default defineNuxtModule<ProfileModuleOptions>({
-  meta: { name: '@nuxt4-layers/profile/presentation', configKey: 'profile' },
+  meta: { name: '@nuxt-layers/profile/presentation', configKey: 'profile' },
   defaults: {
     presentation: true,
     pages: {

@@ -5,7 +5,7 @@ import type { CoordinatedPart } from './requests'
 import type { VerifiableAttribute } from './verification'
 
 /**
- * Ports the host supplies (docs/composition-contract.md). Declared
+ * Ports the host supplies (CONTRACT.md, "Host passes"). Declared
  * structurally, so the contract depends on no driver, key service or other
  * capability's package.
  */

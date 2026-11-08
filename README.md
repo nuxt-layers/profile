@@ -1,10 +1,10 @@
 # profile
 
-Nuxt 4 foundation layer for the personal data that describes a person: what is held, who may see it, and how it is corrected, exported, anonymised or erased, under the person's control.
+Nuxt foundation layer (currently built on Nuxt 4) for the personal data that describes a person: what is held, who may see it, and how it is corrected, exported, anonymised or erased, under the person's control.
 
-Part of the `nuxt4-layers` Identity and Access Management (IAM) suite, with [`authentication`](https://github.com/nuxt4-layers/authentication), `identity`, [`authorisation`](https://github.com/nuxt4-layers/authorisation) and [`iam-integration`](https://github.com/nuxt4-layers/iam-integration).
+Part of the `nuxt-layers` Identity and Access Management (IAM) suite, with `authentication`, `identity`, `authorisation` and `iam-integration`.
 
-**Status:** 1.0.0. Contract version 1 is frozen for 1.x; see [CHANGELOG.md](CHANGELOG.md) and the [roadmap](docs/roadmap.md).
+Hosts compose it from [CONTRACT.md](CONTRACT.md) alone.
 
 ## Owns
 
@@ -39,10 +39,11 @@ Profile may hold the same email address as a sign-in identifier held by Authenti
 
 ## Documentation
 
-- [Contract](docs/contracts.md): the record, disclosure, departures, encryption and erasure, events, ports and server functions
-- [Composition contract](docs/composition-contract.md): what a host supplies
+- [Contract](CONTRACT.md): how a host installs, configures and composes Profile
+- [Specification](docs/contracts.md): the record, disclosure, departures, encryption and erasure, events, ports and server functions in detail
 - [Threat model](docs/threat-model.md): control register and gaps
-- [Design decisions](docs/design-decisions.md) and [roadmap](docs/roadmap.md)
+- [Storage register](STORAGE-REGISTER.md), [design decisions](docs/design-decisions.md), [plan](PLAN.md) and [changelog](CHANGELOG.md)
+- [Resources](RESOURCES.md): the governing decisions and suite processes Profile relies on, at the revisions reviewed
 
 ## Commands
 
@@ -51,16 +52,6 @@ Profile may hold the same email address as a sign-in identifier held by Authenti
 - `pnpm build:playground`: proves the layer composes in a host
 - `pnpm test:e2e`: the default pages in a browser with axe. Needs `PROFILE_TEST_DATABASE_URL`; locally set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if Playwright's own browser is not installed
 
-## Governing decisions and specifications
-
-- [ADR-0005 — Identity and Access Management Suite](https://github.com/nuxt4-layers/platform-architecture/blob/1a6d9da53c4957ff16ae7a28269c49a39d23cff2/docs/decisions/ADR-0005-iam-suite.md)
-- [ADR-0006 — Polyglot Persistence and Data-Store Security](https://github.com/nuxt4-layers/platform-architecture/blob/1a6d9da53c4957ff16ae7a28269c49a39d23cff2/docs/decisions/ADR-0006-polyglot-persistence-and-data-store-security.md) (§6 places sign-in identifiers in Authentication)
-- [Data Store Security Standard v0.1](https://github.com/nuxt4-layers/platform-architecture/blob/1a6d9da53c4957ff16ae7a28269c49a39d23cff2/docs/standards/data-store-security-v01.md)
-- [IAM suite architecture](https://github.com/nuxt4-layers/iam-integration/blob/78c69287c00b22a72c245243aa60e5cf7e5d954c/docs/architecture.md)
-- [Joining and leaving](https://github.com/nuxt4-layers/iam-integration/blob/78c69287c00b22a72c245243aa60e5cf7e5d954c/docs/processes/joining-and-leaving.md) (departure data policy)
-- [Data-subject requests](https://github.com/nuxt4-layers/iam-integration/blob/78c69287c00b22a72c245243aa60e5cf7e5d954c/docs/processes/data-subject-requests.md)
-- [Account closure](https://github.com/nuxt4-layers/iam-integration/blob/78c69287c00b22a72c245243aa60e5cf7e5d954c/docs/processes/account-closure.md)
-
 ## Documentation checks
 
-`python3 scripts/check_markdown.py` checks headings, local links, and that links to other `nuxt4-layers` documents are pinned to a tag or commit.
+`python3 scripts/check_markdown.py` checks headings, *In short* lines under `docs/`, local links, and that external links appear only in `RESOURCES.md`, pinned to a tag or commit.

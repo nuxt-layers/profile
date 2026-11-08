@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** Default page provided by @nuxt4-layers/profile. Disable with profile.pages.enabled = false. */
+/** Default page provided by @nuxt-layers/profile. Disable with profile.pages.enabled = false. */
 
 const { t, locale } = useProfileText()
 useHead({ title: t('profile.own.title'), htmlAttrs: { lang: locale } })

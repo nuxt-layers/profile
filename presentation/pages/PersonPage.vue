@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Default page provided by @nuxt4-layers/profile. Disable with
+ * Default page provided by @nuxt-layers/profile. Disable with
  * profile.pages.enabled = false. The document title stays generic: a
  * person's name never reaches the browser's history or tab list from here.
  */

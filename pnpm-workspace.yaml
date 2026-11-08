@@ -1,5 +1,5 @@
 onlyBuiltDependencies:
-  - "@nuxt4-layers/theme-manager"
+  - "@nuxt-layers/theme-manager"
 
 # Supply-chain hardening (docs/threat-model.md T10).
 # Resolve only versions published at least a day ago; most malicious releases

@@ -1,6 +1,8 @@
 # Threat Model
 
-Profile holds the personal data that describes people, so its first duty is that the data is seen only by those the person allows, and is truly gone when it is erased. This register follows the [Data Store Security Standard v0.1](https://github.com/nuxt4-layers/platform-architecture/blob/1a6d9da53c4957ff16ae7a28269c49a39d23cff2/docs/standards/data-store-security-v01.md) and ADR-0006.
+> **In short:** Profile's assets, trust boundaries, control register and accepted gaps.
+
+Profile holds the personal data that describes people, so its first duty is that the data is seen only by those the person allows, and is truly gone when it is erased. This register follows the platform's Security standard, which replaced the Data Store Security Standard v0.1, and ADR-0006 ([resources](../RESOURCES.md)).
 
 ## 1. Assets
 

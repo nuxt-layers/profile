@@ -14,13 +14,12 @@ import {
 } from './profile-composition'
 import { migrateProfileDatabase } from './profile-server'
 
-const REQUIRED = ['database', 'keyWrapper', 'disclosureContext', 'subjectResolver'] as const
-const KNOWN = new Set<string>([...REQUIRED, 'requestCoordinator', 'accessDecision', 'notifier', 'clock', 'retention'])
+const REQUIRED = ['database', 'keyWrapper', 'disclosureContext'] as const
+const KNOWN = new Set<string>([...REQUIRED, 'subjectResolver', 'requestCoordinator', 'accessDecision', 'notifier', 'clock', 'retention'])
 const PORT_NAMES: Record<typeof REQUIRED[number], string> = {
   database: 'ProfileDatabase',
   keyWrapper: 'ProfileKeyWrapper',
   disclosureContext: 'ProfileDisclosureContext',
-  subjectResolver: 'ProfileSubjectResolver',
 }
 
 /**
@@ -45,7 +44,7 @@ export function composeProfile(composition: ProfileComposition): Promise<string[
     provideProfileDatabase(composition.database)
     provideProfileKeyWrapper(composition.keyWrapper)
     provideProfileDisclosureContext(composition.disclosureContext)
-    provideProfileSubjectResolver(composition.subjectResolver)
+    if (composition.subjectResolver) provideProfileSubjectResolver(composition.subjectResolver)
     if (composition.requestCoordinator) provideProfileRequestCoordinator(composition.requestCoordinator)
     if (composition.accessDecision) provideProfileAccessDecision(composition.accessDecision)
     if (composition.notifier) provideProfileNotifier(composition.notifier)

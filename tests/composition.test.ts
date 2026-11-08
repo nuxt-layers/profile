@@ -82,7 +82,7 @@ describe('composeProfile', () => {
   })
 
   it('refuses a composition missing a required port, and supplies nothing', () => {
-    for (const missing of ['database', 'keyWrapper', 'disclosureContext', 'subjectResolver'] as const) {
+    for (const missing of ['database', 'keyWrapper', 'disclosureContext'] as const) {
       const composition: Record<string, unknown> = ports()
       delete composition[missing]
       expect(() => composeProfile(composition as never)).toThrow(ProfileCompositionError)

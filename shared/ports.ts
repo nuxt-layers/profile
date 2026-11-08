@@ -160,7 +160,8 @@ export interface ProfileComposition {
   database: ProfileDatabase
   keyWrapper: ProfileKeyWrapper
   disclosureContext: ProfileDisclosureContextPort
-  subjectResolver: ProfileSubjectResolver
+  /** For the `/api/profile/*` endpoints; without it they answer `unavailable`. */
+  subjectResolver?: ProfileSubjectResolver
   /** For data-subject requests. */
   requestCoordinator?: ProfileRequestCoordinator
   /** For `administration` lookups. */

@@ -69,7 +69,7 @@ try {
   await tables.connect()
   const { rows } = await tables.query(`select count(*)::int as n from information_schema.tables where table_schema = 'profile' and table_name = 'record'`)
   await tables.end()
-  check(rows[0].n === 1, 'migrateProfileDatabase() must have created the profile schema')
+  check(rows[0].n === 1, 'composeProfile() must have migrated the profile schema')
   console.log('Minimal host smoke test passed.')
 }
 finally {

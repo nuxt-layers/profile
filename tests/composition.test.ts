@@ -17,7 +17,7 @@ import {
   useProfileKeyWrapper,
   useProfileNotifier,
   useProfileRequestCoordinator,
-} from '../server/utils/profile-composition'
+} from '../server/internal/composition'
 import { composeProfile } from '../server/utils/profile-compose'
 
 describe('composition', () => {

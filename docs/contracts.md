@@ -124,6 +124,8 @@ Profile consumes `identity.provisioned`, `membership.ended`, `identity.closed`, 
 
 ## 9. Ports
 
+Each is passed to `composeProfile` under its key (`database`, `keyWrapper`, `disclosureContext`, `subjectResolver`, `requestCoordinator`, `accessDecision`, `notifier`, `clock`).
+
 | Port | Required | Purpose |
 |---|---|---|
 | `ProfileDatabase` | Yes | PostgreSQL pool (runtime role), schema, and optionally the migration pool and the runtime role to grant |
@@ -145,8 +147,7 @@ Profile's permission, for the host to add to Authorisation's catalogue (`PROFILE
 
 | Function | Does |
 |---|---|
-| `composeProfile(composition)` | Supplies every port in one call (ADR-0012 §1) and runs `migrateProfileDatabase()`. All or nothing: a missing required port (`database`, `keyWrapper`, `disclosureContext`), an invalid port or an unknown option throws and leaves nothing supplied |
-| `migrateProfileDatabase()` | Applies migrations through the migration pool, granting the runtime role data access only |
+| `composeProfile(composition)` | Supplies every port in one call (ADR-0012 §1) and applies migrations through the migration pool, granting the runtime role data access only. The only way to compose Profile; the per-port registry is private (`server/internal/composition.ts`). All or nothing: a missing required port (`database`, `keyWrapper`, `disclosureContext`), an invalid port or an unknown option throws and leaves nothing supplied |
 | `getOwnProfile({ subjectId })` | The person's own record, settings and `version` (0 before anything is stored); null once erased |
 | `updateProfile({ subjectId, changes, correlationId, expectedVersion? })` | §3; with `expectedVersion`, `conflict` if the record changed since |
 | `setProfileDisclosure({ subjectId, settings, correlationId, expectedVersion? })` | §4; likewise |
@@ -283,7 +284,7 @@ The person verifies a saved `email` or `phone_number`: Profile sends a 6-digit c
 
 ## 16. Time
 
-Profile reads the current time from the clock the host supplies (`provideProfileClock({ now })`), as iam-integration's architecture §7 ([resources](../RESOURCES.md)) asks of every member; without one, it uses the system clock. A host supplies the same clock to every member, or none.
+Profile reads the current time from the clock the host supplies (`composeProfile({ clock: { now } })`), as iam-integration's architecture §7 ([resources](../RESOURCES.md)) asks of every member; without one, it uses the system clock. A host supplies the same clock to every member, or none.
 
 - Every time Profile keeps or judges comes from the clock: the times it writes (records, keys, erasures, departures, requests, parts, holds, closures, codes, the outbox) and events' `occurredAt`; when a hold, a request's due date or escalation, an access archive, a verification code or its sending window, and a lookup rate-limit window ends; and whether a sign-in is recent enough for the endpoints that need one. The database judges no time of its own: each such time is passed to it from the clock.
 - A clock that throws, or answers anything but a valid `Date`, fails the operation as `unavailable`. Profile never falls back to another time.
@@ -297,5 +298,5 @@ Profile's part of iam-integration's group deletion and retention processes ([res
 
 **Re-homing.** Profile keeps every record in the one store the host composes, whatever the person's home tenant, so `identity.rehomed` needs nothing from it. A host that keeps people's records in different data regions composes one Profile per region, and moving a record between them is the host's migration; Profile does not yet place records by region.
 
-**Retention.** `runProfileMaintenance` also deletes delivered outbox events after `outboxDays` (30, within 7 to 365), completed data-subject requests after `requestDays` (730, within 365 to 2555) unless a legal hold covers the person, and ended legal holds after `endedHoldDays` (365, within 30 to 2555). A host sets them with `provideProfileRetention`, within `PROFILE_RETENTION_BOUNDS`; shorter than a default needs a `riskTreatment` reference. Requests and holds are records the runtime role cannot delete: only the owner's `apply_retention` function deletes them, and it never goes below the hard bounds. A run that deleted anything writes `profile.retention-applied` with counts only.
+**Retention.** `runProfileMaintenance` also deletes delivered outbox events after `outboxDays` (30, within 7 to 365), completed data-subject requests after `requestDays` (730, within 365 to 2555) unless a legal hold covers the person, and ended legal holds after `endedHoldDays` (365, within 30 to 2555). A host sets them with `composeProfile`'s `retention`, within `PROFILE_RETENTION_BOUNDS`; shorter than a default needs a `riskTreatment` reference. Requests and holds are records the runtime role cannot delete: only the owner's `apply_retention` function deletes them, and it never goes below the hard bounds. A run that deleted anything writes `profile.retention-applied` with counts only.
 

@@ -10,12 +10,14 @@ import type {
   ProfileRetentionInput,
   ProfileSubjectResolver,
 } from '../../contracts'
-import { ProfileCompositionError, resolveProfileRetention } from '../../contracts'
-import { systemProfileClock } from '../internal/clock'
+import { ProfileCompositionError, ProfileFailure, resolveProfileRetention } from '../../contracts'
+import { runProfileMigrations } from '../database/migrations'
+import { systemProfileClock } from './clock'
 
 /**
- * Composition registry. The host calls the `provide*` functions from a Nitro
- * plugin; the layer's server code calls the `use*` functions.
+ * PRIVATE. Composition registry. Hosts compose only through `composeProfile`
+ * (server/utils/profile-compose.ts), which calls the `provide*` functions
+ * here; the layer's server code calls the `use*` functions.
  *
  * Required ports fail closed: using one before it is supplied throws
  * `ProfileCompositionError`. There is no implicit store and no implicit key.
@@ -31,10 +33,11 @@ let accessDecision: ProfileAccessDecision | null = null
 let notifier: ProfileNotifier | null = null
 let clock: ProfileClock | null = null
 let retention: ProfileRetention = resolveProfileRetention()
+let migration: Promise<string[]> | null = null
 
 export function provideProfileDatabase(next: ProfileDatabase): void {
   if (next?.dialect !== 'postgres' || typeof next.pool?.query !== 'function' || typeof next.pool.connect !== 'function') {
-    throw new TypeError('provideProfileDatabase expects { dialect: \'postgres\', pool } with a pg-compatible pool.')
+    throw new TypeError('composeProfile: `database` expects { dialect: \'postgres\', pool } with a pg-compatible pool.')
   }
   const schema = next.schema ?? 'profile'
   if (!/^[a-z_][a-z0-9_]{0,62}$/.test(schema)) throw new TypeError(`Invalid profile schema name '${schema}'.`)
@@ -44,14 +47,14 @@ export function provideProfileDatabase(next: ProfileDatabase): void {
 
 export function provideProfileKeyWrapper(next: ProfileKeyWrapper): void {
   if (typeof next?.currentVersion !== 'function' || typeof next.wrap !== 'function' || typeof next.unwrap !== 'function') {
-    throw new TypeError('provideProfileKeyWrapper expects an object with currentVersion(), wrap(key, context) and unwrap(key, context) functions.')
+    throw new TypeError('composeProfile: `keyWrapper` expects an object with currentVersion(), wrap(key, context) and unwrap(key, context) functions.')
   }
   keyWrapper = next
 }
 
 export function provideProfileDisclosureContext(next: ProfileDisclosureContextPort): void {
   if (typeof next?.describe !== 'function') {
-    throw new TypeError('provideProfileDisclosureContext expects an object with a describe(request, options) function.')
+    throw new TypeError('composeProfile: `disclosureContext` expects an object with a describe(request, options) function.')
   }
   disclosureContext = next
 }
@@ -59,7 +62,7 @@ export function provideProfileDisclosureContext(next: ProfileDisclosureContextPo
 /** The signed-in person for each `/api/profile/*` request, from Authentication through the host. */
 export function provideProfileSubjectResolver(next: ProfileSubjectResolver): void {
   if (typeof next?.resolve !== 'function') {
-    throw new TypeError('provideProfileSubjectResolver expects an object with a resolve(event) function.')
+    throw new TypeError('composeProfile: `subjectResolver` expects an object with a resolve(event) function.')
   }
   subjectResolver = next
 }
@@ -67,7 +70,7 @@ export function provideProfileSubjectResolver(next: ProfileSubjectResolver): voi
 /** Each other member's part of a data-subject request, from iam-integration's `profileRequestCoordinatorFromMembers`. */
 export function provideProfileRequestCoordinator(next: ProfileRequestCoordinator): void {
   if (typeof next?.exportPart !== 'function') {
-    throw new TypeError('provideProfileRequestCoordinator expects an object with an exportPart(input) function.')
+    throw new TypeError('composeProfile: `requestCoordinator` expects an object with an exportPart(input) function.')
   }
   requestCoordinator = next
 }
@@ -75,7 +78,7 @@ export function provideProfileRequestCoordinator(next: ProfileRequestCoordinator
 /** Authorisation's decisions on Profile's permissions, from iam-integration's `profileAccessDecisionFromAuthorisation`. */
 export function provideProfileAccessDecision(next: ProfileAccessDecision): void {
   if (typeof next?.allows !== 'function') {
-    throw new TypeError('provideProfileAccessDecision expects an object with an allows(input) function.')
+    throw new TypeError('composeProfile: `accessDecision` expects an object with an allows(input) function.')
   }
   accessDecision = next
 }
@@ -83,7 +86,7 @@ export function provideProfileAccessDecision(next: ProfileAccessDecision): void 
 /** The host's delivery of verification codes to contact details. */
 export function provideProfileNotifier(next: ProfileNotifier): void {
   if (typeof next?.send !== 'function') {
-    throw new TypeError('provideProfileNotifier expects an object with a send(message) function.')
+    throw new TypeError('composeProfile: `notifier` expects an object with a send(message) function.')
   }
   notifier = next
 }
@@ -109,7 +112,7 @@ export function useProfileRetention(): ProfileRetention {
 
 export function provideProfileClock(next: ProfileClock): void {
   if (typeof next?.now !== 'function') {
-    throw new TypeError('provideProfileClock expects an object with a now() function.')
+    throw new TypeError('composeProfile: `clock` expects an object with a now() function.')
   }
   clock = next
 }
@@ -154,7 +157,25 @@ export function useProfileDisclosureContext(): ProfileDisclosureContextPort {
   return disclosureContext
 }
 
-/** Test helper: removes every supplied port. */
+/**
+ * Applies pending migrations to Profile's schema, through the migration pool
+ * when supplied (then granting the runtime role). Started by `composeProfile`.
+ */
+export function startProfileMigrations(): Promise<string[]> {
+  const database = useProfileDatabase()
+  migration = runProfileMigrations(database.migrationPool ?? database.pool, database.schema, database.runtimeRole)
+  migration.catch((error) => {
+    console.error('[profile] database migrations failed:', error instanceof Error ? error.message : error)
+  })
+  return migration
+}
+
+/** Waits for migrations, if started; fails closed as `unavailable` if they failed. */
+export async function profileMigrationsDone(): Promise<void> {
+  if (migration) await migration.catch(() => { throw new ProfileFailure('unavailable', 'migrations failed') })
+}
+
+/** Removes every supplied port: on a failed composition, and in tests. */
 export function clearProfileComposition(): void {
   database = null
   keyWrapper = null
@@ -165,4 +186,5 @@ export function clearProfileComposition(): void {
   notifier = null
   clock = null
   retention = resolveProfileRetention()
+  migration = null
 }

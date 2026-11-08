@@ -4,7 +4,7 @@
 
 ## 2026-11-08
 
-- `composeProfile(composition)`: composes Profile in one call (ADR-0012 §1), all or nothing, then migrates. An addition: the `provide*` functions are unchanged. New type `ProfileComposition` in `./contracts`.
+- `composeProfile(composition)` is now the only way to compose Profile (ADR-0012 §1): one call, all or nothing, then migrations. **Breaking:** the `provide*` functions and `migrateProfileDatabase()` are no longer public; a host passes the same ports under `database`, `keyWrapper`, `disclosureContext`, `subjectResolver` (optional), `requestCoordinator`, `accessDecision`, `notifier`, `clock` and `retention`. New type `ProfileComposition` in `./contracts`.
 - `examples/minimal-host`: the smallest host composing Profile alone (ADR-0012 §4), built and smoke-tested in CI against PostgreSQL, and held to the 50-line composition budget by `tests/minimal-host.test.ts`.
 - Moved from the `nuxt4-layers` organisation to `nuxt-layers`: the package is now `@nuxt-layers/profile` (formerly `@nuxt4-layers/profile`), and the repository `nuxt-layers/profile`. Hosts change their dependency to `git+https://github.com/nuxt-layers/profile.git#master` and every `@nuxt4-layers/profile` import, `extends` entry and stylesheet import to `@nuxt-layers/profile`. No API, runtime key, environment variable, schema or event changes.
 - Theme Manager (development only) now follows `nuxt-layers/theme-manager` on `master`.

@@ -11,8 +11,8 @@ import {
   provideProfileRequestCoordinator,
   provideProfileRetention,
   provideProfileSubjectResolver,
-} from './profile-composition'
-import { migrateProfileDatabase } from './profile-server'
+  startProfileMigrations,
+} from '../internal/composition'
 
 const REQUIRED = ['database', 'keyWrapper', 'disclosureContext'] as const
 const KNOWN = new Set<string>([...REQUIRED, 'subjectResolver', 'requestCoordinator', 'accessDecision', 'notifier', 'clock', 'retention'])
@@ -30,8 +30,6 @@ const PORT_NAMES: Record<typeof REQUIRED[number], string> = {
  * port throws before anything stays supplied, so Profile is either fully
  * composed or not composed at all (fail closed). Resolves with the migrations
  * applied; Profile's operations already wait for them, so a host need not.
- *
- * The `provide*` functions remain for hosts that compose port by port.
  */
 export function composeProfile(composition: ProfileComposition): Promise<string[]> {
   if (!composition || typeof composition !== 'object') throw new TypeError('composeProfile expects an object of ports.')
@@ -55,5 +53,5 @@ export function composeProfile(composition: ProfileComposition): Promise<string[
     clearProfileComposition()
     throw error
   }
-  return migrateProfileDatabase()
+  return startProfileMigrations()
 }

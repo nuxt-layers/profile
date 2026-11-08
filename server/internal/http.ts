@@ -14,7 +14,7 @@ import {
   UUID_PATTERN,
   UUID_V7_PATTERN,
 } from '../../contracts'
-import { useProfileClock, useProfileSubjectResolver } from '../utils/profile-composition'
+import { useProfileClock, useProfileSubjectResolver } from './composition'
 import { timeFrom } from './clock'
 
 /**

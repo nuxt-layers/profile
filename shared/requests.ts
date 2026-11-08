@@ -166,7 +166,7 @@ export function requestDueAt(openedAt: Date, months: number = PROFILE_REQUEST_PO
  * How long Profile keeps records once their purpose is over (iam-integration
  * `docs/processes/retention.md`), in days: delivered outbox events,
  * completed data-subject requests and ended legal holds. A host may set
- * them within the bounds with `provideProfileRetention`; shorter than the
+ * them within the bounds with `composeProfile`'s `retention`; shorter than the
  * default needs a `riskTreatment` reference. A request of a person a hold
  * covers is kept while the hold runs.
  */

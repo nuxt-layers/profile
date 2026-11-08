@@ -37,7 +37,7 @@ export default defineNitroPlugin(() => {
 })
 ```
 
-`composeProfile(composition)` (type `ProfileComposition`) supplies every port at once and starts the migrations, returning their promise; it is all or nothing, throwing `ProfileCompositionError` for a missing required port and `TypeError` for an invalid port or an unknown option, with nothing left supplied. The `provide*` functions and `migrateProfileDatabase()` remain for hosts that compose port by port. `examples/minimal-host` in this repository is a complete, tested host within the 50-line budget, supplying the four required ports. The `provide*` functions and server functions are Nitro auto-imports. Types and pure helpers come only from `@nuxt-layers/profile/contracts`, which imports nothing but `zod`. Other public entry points: `@nuxt-layers/profile/capability` (the manifest), `@nuxt-layers/profile/presentation` and `@nuxt-layers/profile/tailwind.css`. Every other path, including `server/internal` and `server/database`, is private.
+`composeProfile(composition)` (type `ProfileComposition`) supplies every port at once and starts the migrations, returning their promise; it is all or nothing, throwing `ProfileCompositionError` for a missing required port and `TypeError` for an invalid port or an unknown option, with nothing left supplied. It is the only way to compose Profile: there are no per-port functions, and it is called once. `examples/minimal-host` in this repository is a complete, tested host within the 50-line budget, supplying the three required ports and a subject resolver. `composeProfile`, `createLocalProfileKeyWrapper` and the server functions are Nitro auto-imports. Types and pure helpers come only from `@nuxt-layers/profile/contracts`, which imports nothing but `zod`. Other public entry points: `@nuxt-layers/profile/capability` (the manifest), `@nuxt-layers/profile/presentation` and `@nuxt-layers/profile/tailwind.css`. Every other path, including `server/internal` and `server/database`, is private.
 
 ## Settings
 
@@ -51,7 +51,7 @@ export default defineNitroPlugin(() => {
 | `profile.pages.enabled` | `true` | `false` keeps the components without the pages |
 | `profile.pages.paths` | see Screens | Moves the pages; the person path must keep `:subjectId` |
 | `profile.messages` (`app.config.ts`) | `presentation/messages.ts` | Wording overrides and further locales |
-| `provideProfileRetention({ outboxDays, requestDays, endedHoldDays })` | 30, 730, 365 | Retention, within `PROFILE_RETENTION_BOUNDS` (7–365, 365–2555, 30–2555). Shorter than a default needs a `riskTreatment` reference |
+| `composeProfile({ retention: { outboxDays, requestDays, endedHoldDays } })` | 30, 730, 365 | Retention, within `PROFILE_RETENTION_BOUNDS` (7–365, 365–2555, 30–2555). Shorter than a default needs a `riskTreatment` reference |
 
 Fixed policies, exported from the contract: `PROFILE_LOOKUP_RATE_LIMIT` (60 lookups a minute per viewer, each up to 200 people), `PROFILE_STEP_UP_SECONDS` (900: "recent sign-in"), `PROFILE_REQUEST_POLICY` (requests due one calendar month after opening, escalated 7 days before).
 
@@ -59,9 +59,9 @@ Fixed policies, exported from the contract: `PROFILE_LOOKUP_RATE_LIMIT` (60 look
 
 Required ports fail closed: a missing one throws `ProfileCompositionError`. There is no in-memory store and no default key.
 
-| Port (`composeProfile` key; `provide…`) | Required | Shape and duty |
+| `composeProfile` key; port type | Required | Shape and duty |
 |---|---|---|
-| `database`; `ProfileDatabase` | Yes | A `pg`-compatible pool connecting as a runtime role that owns nothing; `schema` (default `profile`); `migrationPool` and `runtimeRole`, so `migrateProfileDatabase()` runs as owner and grants the runtime role data access only. PostgreSQL 16 |
+| `database`; `ProfileDatabase` | Yes | A `pg`-compatible pool connecting as a runtime role that owns nothing; `schema` (default `profile`); `migrationPool` and `runtimeRole`, so the migrations run as owner and grants the runtime role data access only. PostgreSQL 16 |
 | `keyWrapper`; `ProfileKeyWrapper` | Yes | `wrap`/`unwrap` each person's 256-bit data key with a versioned host key (KMS, HSM or vault), binding `context.identityId` and rejecting on failure. `createLocalProfileKeyWrapper({ keys, current })` for development and self-hosting |
 | `disclosureContext`; `ProfileDisclosureContext` | Yes | Identity's disclosure-context port, passed through unchanged: the viewer's relationship to each person, the person's standing and the group's departure data policy |
 | `subjectResolver`; `ProfileSubjectResolver` | For the endpoints | `resolve(event)` → the signed-in principal from Authentication (`principalId`, `authenticatedAt`, `assurance`) or `null` |
@@ -84,8 +84,7 @@ The host also:
 
 | Function | Does |
 |---|---|
-| `composeProfile(composition)` | Supplies every port in one call and migrates; all or nothing |
-| `migrateProfileDatabase()` | Applies migrations as owner; grants the runtime role data access only |
+| `composeProfile(composition)` | Supplies every port in one call and migrates as owner, granting the runtime role data access only; all or nothing |
 | `getOwnProfile({ subjectId })` | Own record, disclosure settings and `version` (0 before anything is stored); `null` once erased |
 | `updateProfile({ subjectId, changes, correlationId, expectedVersion? })` | Sets or removes attributes; `conflict` if `expectedVersion` is stale |
 | `setProfileDisclosure({ subjectId, settings, correlationId, expectedVersion? })` | Each attribute's audience: `group`, `tenant` or `nobody` (defaults: name to `group`, all else `nobody`) |

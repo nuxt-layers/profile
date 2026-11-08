@@ -1,7 +1,7 @@
 import type { ProfileSubject } from './api'
 import type { DisclosureContext } from './disclosure'
 import type { ProfileEvent } from './events'
-import type { CoordinatedPart } from './requests'
+import type { CoordinatedPart, ProfileRetentionInput } from './requests'
 import type { VerifiableAttribute } from './verification'
 
 /**
@@ -149,4 +149,26 @@ export interface ProfileNotifier {
  */
 export interface ProfileClock {
   now(): Date
+}
+
+/**
+ * Everything a host passes to `composeProfile` (ADR-0012 §1): the required
+ * ports, the optional ones, and retention. Required members have no default,
+ * so a missing one fails composition rather than a later request.
+ */
+export interface ProfileComposition {
+  database: ProfileDatabase
+  keyWrapper: ProfileKeyWrapper
+  disclosureContext: ProfileDisclosureContextPort
+  subjectResolver: ProfileSubjectResolver
+  /** For data-subject requests. */
+  requestCoordinator?: ProfileRequestCoordinator
+  /** For `administration` lookups. */
+  accessDecision?: ProfileAccessDecision
+  /** For contact-detail verification. */
+  notifier?: ProfileNotifier
+  /** The system clock without it. */
+  clock?: ProfileClock
+  /** The defaults without it. */
+  retention?: ProfileRetentionInput
 }

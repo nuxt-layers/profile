@@ -22,20 +22,22 @@ export default defineNuxtConfig({ extends: ['@nuxt-layers/profile'] })
 ```ts
 // server/plugins/profile.ts
 export default defineNitroPlugin(() => {
-  provideProfileDatabase({ dialect: 'postgres', pool: runtimePool, migrationPool: ownerPool, runtimeRole: 'profile_runtime' })
-  provideProfileKeyWrapper(myKmsKeyWrapper) // or createLocalProfileKeyWrapper({ keys, current })
-  provideProfileDisclosureContext({ describe: (request, options) => getIdentityDisclosureContext().describe(request, options) })
-  provideProfileSubjectResolver({ resolve: event => getAuthenticatedPrincipal(event) })
-  // Optional ports, each needed only for the feature named in "Host passes":
-  provideProfileRequestCoordinator(profileRequestCoordinatorFromMembers({ exportIdentity, exportAuthentication, exportAuthorisation }))
-  provideProfileAccessDecision(profileAccessDecisionFromAuthorisation({ authorise }))
-  provideProfileNotifier(myNotifier)
-  provideProfileClock(suiteClock)
-  migrateProfileDatabase()
+  composeProfile({
+    database: { dialect: 'postgres', pool: runtimePool, migrationPool: ownerPool, runtimeRole: 'profile_runtime' },
+    keyWrapper: myKmsKeyWrapper, // or createLocalProfileKeyWrapper({ keys, current })
+    disclosureContext: { describe: (request, options) => getIdentityDisclosureContext().describe(request, options) },
+    subjectResolver: { resolve: event => getAuthenticatedPrincipal(event) },
+    // Optional, each needed only for the feature named in "Host passes":
+    requestCoordinator: profileRequestCoordinatorFromMembers({ exportIdentity, exportAuthentication, exportAuthorisation }),
+    accessDecision: profileAccessDecisionFromAuthorisation({ authorise }),
+    notifier: myNotifier,
+    clock: suiteClock,
+    retention: { outboxDays: 30 },
+  })
 })
 ```
 
-`examples/minimal-host` in this repository is a complete, tested host within the 50-line budget, supplying the four required ports. The `provide*` functions and server functions are Nitro auto-imports. Types and pure helpers come only from `@nuxt-layers/profile/contracts`, which imports nothing but `zod`. Other public entry points: `@nuxt-layers/profile/capability` (the manifest), `@nuxt-layers/profile/presentation` and `@nuxt-layers/profile/tailwind.css`. Every other path, including `server/internal` and `server/database`, is private.
+`composeProfile(composition)` (type `ProfileComposition`) supplies every port at once and starts the migrations, returning their promise; it is all or nothing, throwing `ProfileCompositionError` for a missing required port and `TypeError` for an invalid port or an unknown option, with nothing left supplied. The `provide*` functions and `migrateProfileDatabase()` remain for hosts that compose port by port. `examples/minimal-host` in this repository is a complete, tested host within the 50-line budget, supplying the four required ports. The `provide*` functions and server functions are Nitro auto-imports. Types and pure helpers come only from `@nuxt-layers/profile/contracts`, which imports nothing but `zod`. Other public entry points: `@nuxt-layers/profile/capability` (the manifest), `@nuxt-layers/profile/presentation` and `@nuxt-layers/profile/tailwind.css`. Every other path, including `server/internal` and `server/database`, is private.
 
 ## Settings
 
@@ -57,16 +59,16 @@ Fixed policies, exported from the contract: `PROFILE_LOOKUP_RATE_LIMIT` (60 look
 
 Required ports fail closed: a missing one throws `ProfileCompositionError`. There is no in-memory store and no default key.
 
-| Port (`provide…`) | Required | Shape and duty |
+| Port (`composeProfile` key; `provide…`) | Required | Shape and duty |
 |---|---|---|
-| `ProfileDatabase` | Yes | A `pg`-compatible pool connecting as a runtime role that owns nothing; `schema` (default `profile`); `migrationPool` and `runtimeRole`, so `migrateProfileDatabase()` runs as owner and grants the runtime role data access only. PostgreSQL 16 |
-| `ProfileKeyWrapper` | Yes | `wrap`/`unwrap` each person's 256-bit data key with a versioned host key (KMS, HSM or vault), binding `context.identityId` and rejecting on failure. `createLocalProfileKeyWrapper({ keys, current })` for development and self-hosting |
-| `ProfileDisclosureContext` | Yes | Identity's disclosure-context port, passed through unchanged: the viewer's relationship to each person, the person's standing and the group's departure data policy |
-| `ProfileSubjectResolver` | For the endpoints | `resolve(event)` → the signed-in principal from Authentication (`principalId`, `authenticatedAt`, `assurance`) or `null` |
-| `ProfileRequestCoordinator` | For data-subject requests | Each other member's part of an access request, from iam-integration's `profileRequestCoordinatorFromMembers`; answers `configuration` with `null` when no configuration layer is composed |
-| `ProfileAccessDecision` | For `administration` lookups | Whether the viewer holds a Profile permission on a group now, from iam-integration's `profileAccessDecisionFromAuthorisation` |
-| `ProfileNotifier` | For contact verification | Delivers a 6-digit code by email or SMS in the person's locale, and nothing else |
-| `ProfileClock` | No | `{ now(): Date }`, the same clock given to every member; the system clock without it. Only server code composes it |
+| `database`; `ProfileDatabase` | Yes | A `pg`-compatible pool connecting as a runtime role that owns nothing; `schema` (default `profile`); `migrationPool` and `runtimeRole`, so `migrateProfileDatabase()` runs as owner and grants the runtime role data access only. PostgreSQL 16 |
+| `keyWrapper`; `ProfileKeyWrapper` | Yes | `wrap`/`unwrap` each person's 256-bit data key with a versioned host key (KMS, HSM or vault), binding `context.identityId` and rejecting on failure. `createLocalProfileKeyWrapper({ keys, current })` for development and self-hosting |
+| `disclosureContext`; `ProfileDisclosureContext` | Yes | Identity's disclosure-context port, passed through unchanged: the viewer's relationship to each person, the person's standing and the group's departure data policy |
+| `subjectResolver`; `ProfileSubjectResolver` | Yes (`composeProfile`); for the endpoints | `resolve(event)` → the signed-in principal from Authentication (`principalId`, `authenticatedAt`, `assurance`) or `null` |
+| `requestCoordinator`; `ProfileRequestCoordinator` | For data-subject requests | Each other member's part of an access request, from iam-integration's `profileRequestCoordinatorFromMembers`; answers `configuration` with `null` when no configuration layer is composed |
+| `accessDecision`; `ProfileAccessDecision` | For `administration` lookups | Whether the viewer holds a Profile permission on a group now, from iam-integration's `profileAccessDecisionFromAuthorisation` |
+| `notifier`; `ProfileNotifier` | For contact verification | Delivers a 6-digit code by email or SMS in the person's locale, and nothing else |
+| `clock`; `ProfileClock` | No | `{ now(): Date }`, the same clock given to every member; the system clock without it. Only server code composes it |
 
 The host also:
 
@@ -82,6 +84,7 @@ The host also:
 
 | Function | Does |
 |---|---|
+| `composeProfile(composition)` | Supplies every port in one call and migrates; all or nothing |
 | `migrateProfileDatabase()` | Applies migrations as owner; grants the runtime role data access only |
 | `getOwnProfile({ subjectId })` | Own record, disclosure settings and `version` (0 before anything is stored); `null` once erased |
 | `updateProfile({ subjectId, changes, correlationId, expectedVersion? })` | Sets or removes attributes; `conflict` if `expectedVersion` is stale |

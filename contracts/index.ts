@@ -148,6 +148,7 @@ export type {
   PostgresPoolLike,
   ProfileAccessDecision,
   ProfileClock,
+  ProfileComposition,
   ProfileDatabase,
   ProfileDisclosureContextPort,
   ProfileEventPublisher,

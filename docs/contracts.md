@@ -145,6 +145,7 @@ Profile's permission, for the host to add to Authorisation's catalogue (`PROFILE
 
 | Function | Does |
 |---|---|
+| `composeProfile(composition)` | Supplies every port in one call (ADR-0012 §1) and runs `migrateProfileDatabase()`. All or nothing: a missing required port (`database`, `keyWrapper`, `disclosureContext`, `subjectResolver`), an invalid port or an unknown option throws and leaves nothing supplied |
 | `migrateProfileDatabase()` | Applies migrations through the migration pool, granting the runtime role data access only |
 | `getOwnProfile({ subjectId })` | The person's own record, settings and `version` (0 before anything is stored); null once erased |
 | `updateProfile({ subjectId, changes, correlationId, expectedVersion? })` | §3; with `expectedVersion`, `conflict` if the record changed since |

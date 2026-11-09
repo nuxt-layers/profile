@@ -226,8 +226,8 @@ alter table {{schema}}."legal_hold" drop constraint "legal_hold_parts_check",
     // Retention periods are calendar days in the controller's zone, so
     // Profile computes each cutoff through Clock and passes the instant.
     // The function still refuses to delete anything younger than the hard
-    // floors (365 and 30 days), whichever cutoff is earlier. 0004's
-    // function stays for databases mid-upgrade; Profile no longer calls it.
+    // floors (365 and 30 days), whichever cutoff is earlier. 0008 drops
+    // 0004's function.
     id: '0007_retention_cutoffs',
     sql: `
 create function {{schema}}.apply_retention_before(p_at timestamptz, p_request_before timestamptz, p_hold_before timestamptz)
@@ -243,6 +243,13 @@ begin
   return jsonb_build_object('requests', n_requests, 'legalHolds', n_holds);
 end $$;
 revoke all on function {{schema}}.apply_retention_before(timestamptz, timestamptz, timestamptz) from public;
+`,
+  },
+  {
+    // 0004's day-based retention function, replaced by 0007's; nothing calls it.
+    id: '0008_drop_day_retention',
+    sql: `
+drop function {{schema}}.apply_retention(timestamptz, integer, integer);
 `,
   },
 ]
@@ -294,7 +301,6 @@ export async function runProfileMigrations(pool: PostgresPoolLike, schema: strin
       await client.query(`grant select, insert, update on ${quoted}."request", ${quoted}."legal_hold", ${quoted}."closed_identity" to ${role}`)
       await client.query(`grant select, insert on ${quoted}."erased" to ${role}`)
       await client.query(`grant usage on sequence ${quoted}."outbox_sequence_seq" to ${role}`)
-      await client.query(`grant execute on function ${quoted}.apply_retention(timestamptz, integer, integer) to ${role}`)
       await client.query(`grant execute on function ${quoted}.apply_retention_before(timestamptz, timestamptz, timestamptz) to ${role}`)
     }
     await client.query('commit')

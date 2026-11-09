@@ -178,7 +178,7 @@ importers:
         version: 4.13.0(playwright-core@1.64.0)
       '@nuxt-layers/theme-manager':
         specifier: github:nuxt-layers/theme-manager#master
-        version: git+https://github.com/nuxt-layers/theme-manager.git#1333f2ee1734d741acb088ec24a69125848c1527(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))
+        version: https://codeload.github.com/nuxt-layers/theme-manager/tar.gz/1333f2ee1734d741acb088ec24a69125848c1527(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))
       '@playwright/test':
         specifier: ^1.64.0
         version: 1.64.0
@@ -591,8 +591,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@nuxt-layers/theme-manager@git+https://github.com/nuxt-layers/theme-manager.git#1333f2ee1734d741acb088ec24a69125848c1527':
-    resolution: {commit: 1333f2ee1734d741acb088ec24a69125848c1527, repo: https://github.com/nuxt-layers/theme-manager.git, type: git}
+  '@nuxt-layers/theme-manager@https://codeload.github.com/nuxt-layers/theme-manager/tar.gz/1333f2ee1734d741acb088ec24a69125848c1527':
+    resolution: {gitHosted: true, integrity: sha512-LSELnb9o0Qc5nERX/5aAdGL3w7dlYhhiP+tdmeoXjCQ5ExpxLwfxyiupsd1R0gEPFyVE/OSrzyIuyHDzZnpmFQ==, tarball: https://codeload.github.com/nuxt-layers/theme-manager/tar.gz/1333f2ee1734d741acb088ec24a69125848c1527}
     version: 0.2.2
     engines: {node: '>=22'}
 
@@ -2764,8 +2764,8 @@ packages:
     resolution: {integrity: sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==}
     engines: {node: '>= 18'}
 
-  serialize-javascript@7.1.2:
-    resolution: {integrity: sha512-GL2BWwVa6JydKO6l/ljVgjAZF4QJ3S7dWDWi53s5GZT8PJzD2fNxi67HANQGKAqPrwEpL5ba7gUBGi0Ls/sEoQ==}
+  serialize-javascript@7.1.4:
+    resolution: {integrity: sha512-FqlEuoTq/zRmA4Lg6aOqyH3lCHbUtCB0bmHCeFniX2GBdDqMJM3FwdvEhlE5Pim1dlt2FfBdVPmUNNiGhhKqpw==}
     engines: {node: '>=20.0.0'}
 
   seroval@1.7.10:
@@ -3909,7 +3909,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.3
 
-  '@nuxt-layers/theme-manager@git+https://github.com/nuxt-layers/theme-manager.git#1333f2ee1734d741acb088ec24a69125848c1527(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))':
+  '@nuxt-layers/theme-manager@https://codeload.github.com/nuxt-layers/theme-manager/tar.gz/1333f2ee1734d741acb088ec24a69125848c1527(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))':
     dependencies:
       '@tailwindcss/vite': 4.3.3(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2))
       tailwindcss: 4.3.3
@@ -4412,7 +4412,7 @@ snapshots:
 
   '@rollup/plugin-terser@1.0.2(rollup@4.68.0)':
     dependencies:
-      serialize-javascript: 7.1.2
+      serialize-javascript: 7.1.4
       smob: 1.6.2
       terser: 5.51.2
     optionalDependencies:
@@ -6358,7 +6358,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  serialize-javascript@7.1.2: {}
+  serialize-javascript@7.1.4: {}
 
   seroval@1.7.10: {}
 

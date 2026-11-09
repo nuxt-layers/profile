@@ -53,7 +53,7 @@ try {
     if (!me) await new Promise(resolve => setTimeout(resolve, 500))
   }
   check(me, 'the host did not start')
-  check(me.status === 401 && (await me.json()).code === 'unauthenticated', 'GET /api/profile/me without a subject must answer 401 unauthenticated')
+  check(me.status === 401 && (await me.json()).data?.code === 'unauthenticated', 'GET /api/profile/me without a subject must answer 401 unauthenticated')
 
   const crossOrigin = await fetch(`${origin}/api/profile/display-names`, {
     method: 'POST',

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ProfileCompositionError, ProfileFailure } from '../contracts'
-import { timeFrom } from '../server/internal/clock'
+import { profileTime, timeFrom } from '../server/internal/clock'
 import {
   clearProfileComposition,
   provideProfileAccessDecision,
@@ -46,21 +46,28 @@ describe('composition', () => {
     expect(() => provideProfileNotifier({} as never)).toThrow(TypeError)
   })
 
-  it('uses the system clock when the host supplies none, and the host\'s clock when it does', () => {
+  it('uses Clock\'s system clock when the host supplies none, and the host\'s clock when it does', () => {
     const before = Date.now()
-    const now = timeFrom(useProfileClock())
-    expect(now.getTime()).toBeGreaterThanOrEqual(before)
-    expect(now.getTime()).toBeLessThanOrEqual(Date.now())
+    const now = Date.parse(timeFrom(useProfileClock()))
+    expect(now).toBeGreaterThanOrEqual(before)
+    expect(now).toBeLessThanOrEqual(Date.now())
     expect(() => provideProfileClock({} as never)).toThrow(TypeError)
-    const fixed = new Date('2030-01-02T03:04:05Z')
-    provideProfileClock({ now: () => fixed })
-    expect(timeFrom(useProfileClock()).toISOString()).toBe('2030-01-02T03:04:05.000Z')
+    provideProfileClock({ now: () => '2030-01-02T03:04:05.000Z' })
+    expect(timeFrom(useProfileClock())).toBe('2030-01-02T03:04:05.000Z')
     clearProfileComposition()
-    expect(Math.abs(timeFrom(useProfileClock()).getTime() - Date.now())).toBeLessThan(1000)
+    expect(Math.abs(Date.parse(timeFrom(useProfileClock())) - Date.now())).toBeLessThan(1000)
   })
 
-  it('fails closed on a clock that throws or answers anything but a valid Date', () => {
-    for (const now of [() => new Date(Number.NaN), () => Date.now() as unknown as Date, () => null as unknown as Date, () => { throw new Error('down') }]) {
+  it('reckons through Clock: a calendar month on clamps to the month\'s last day', () => {
+    const time = profileTime({ now: () => '2026-10-10T08:00:00.000Z' })
+    expect(Date.parse(time.addMonths('2026-10-10T08:00:00.000Z', 1))).toBe(Date.parse('2026-11-10T08:00:00.000Z'))
+    expect(Date.parse(time.addMonths('2027-01-31T08:00:00.000Z', 1))).toBe(Date.parse('2027-02-28T08:00:00.000Z'))
+    expect(Date.parse(time.addMonths('2026-12-15T00:00:00.000Z', 1))).toBe(Date.parse('2027-01-15T00:00:00.000Z'))
+    expect(time.compare(time.addDays('2026-10-10T08:00:00.000Z', 1), '2026-10-11T08:00:00.000Z')).toBe(0)
+  })
+
+  it('fails closed on a clock that throws or answers anything but a valid instant', () => {
+    for (const now of [() => 'not a time', () => '2026-10-10T00:00:00', () => new Date() as unknown as string, () => null as unknown as string, () => { throw new Error('down') }]) {
       expect(() => timeFrom({ now })).toThrow(ProfileFailure)
       try {
         timeFrom({ now })

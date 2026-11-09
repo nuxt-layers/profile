@@ -25,7 +25,9 @@ const notice = ref<string | null>(null)
 const { data, error, refresh } = await useAsyncData('profile-requests', () => profile.requests())
 const failure = computed(() => (error.value ? profileErrorOf(error.value)?.code ?? 'unavailable' : null))
 const requests = computed<RequestView[]>(() => data.value?.requests ?? [])
-const dateOf = (instant: string) => new Date(instant).toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' })
+// Dates through Clock (Layer Standard §5), in the pages' locale and Clock's configured time zone, so SSR and hydration agree.
+const clock = useClock({ locale })
+const dateOf = (instant: string) => clock.format(clock.parse('instant', instant), { dateStyle: 'long' })
 
 async function open(type: 'access' | 'restriction') {
   notice.value = null

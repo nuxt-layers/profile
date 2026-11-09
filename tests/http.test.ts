@@ -400,7 +400,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
 
     it('takes every time from the supplied clock: holds end, codes expire and sign-ins age by it', async () => {
       let offset = 0
-      provideProfileClock({ now: () => new Date(Date.now() + offset) })
+      provideProfileClock({ now: () => new Date(Date.now() + offset).toISOString() })
       const me = await person()
       const hold = await placeProfileLegalHold({ identityId: me, parts: ['permissions'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 60 * MINUTE).toISOString(), correlationId: uuidv7() })
       await call('PATCH', '/api/profile/me', { as: me, body: { expectedVersion: 1, changes: { email: 'ada@example.com' } } })
@@ -428,7 +428,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
 
     it('fails closed when the clock answers an invalid time or fails, never falling back to another time', async () => {
       const me = await person()
-      for (const now of [() => new Date(Number.NaN), () => '2026-10-10T00:00:00Z' as unknown as Date, () => { throw new Error('clock down') }]) {
+      for (const now of [() => 'not a time', () => '2026-10-10T00:00:00' as string, () => new Date() as unknown as string, () => { throw new Error('clock down') }]) {
         provideProfileClock({ now })
         await expect(updateProfile({ subjectId: me, changes: { name: 'Ada' }, correlationId: uuidv7() })).rejects.toMatchObject({ name: 'ProfileFailure', code: 'unavailable' })
         await expect(runProfileMaintenance()).rejects.toMatchObject({ code: 'unavailable' })

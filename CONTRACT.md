@@ -12,7 +12,7 @@ Profile answers two questions: **what describes this person**, and **what may th
 pnpm add "@nuxt-layers/profile@git+https://github.com/nuxt-layers/profile.git#master"
 ```
 
-The layer is a Nuxt layer (peer dependency `nuxt` `^4.5.0`, Node.js 22 or later). Add it to `extends` and supply its ports from one Nitro plugin:
+The layer is a Nuxt layer (peer dependency `nuxt` `^4.6.0`, Node.js 26.13 or later). It extends Clock (`@nuxt-layers/clock`, installed with it, following `master`), which owns every date and time Profile keeps, judges or shows; Clock's `runtimeConfig.public.clock` settings (`locale`, `timeZone`, `hourCycle`) are the host's and also govern the dates the default pages show. Add Profile to `extends` and supply its ports from one Nitro plugin:
 
 ```ts
 // nuxt.config.ts
@@ -76,7 +76,7 @@ Required ports fail closed: a missing one throws `ProfileCompositionError`. Ther
 | `requestCoordinator`; `ProfileRequestCoordinator` | When a part is `coordinated` | `exportPart({ identityId, part, correlationId })` → that part's machine-readable bundle for an access request, or `null` when nothing is held; rejects on failure (the part stays pending and is retried). Declaring a coordinated part without it fails composition |
 | `accessDecision`; `ProfileAccessDecision` | For `administration` lookups | `allows({ subject, permission, groupId })` → whether the viewer holds one of `PROFILE_PERMISSIONS` on the group now; rejects on failure |
 | `notifier`; `ProfileNotifier` | For contact verification | Delivers a 6-digit code by email or SMS in the person's locale, and nothing else |
-| `clock`; `ProfileClock` | No | `{ now(): Date }`, the same clock the host gives every capability; the system clock without it. Only server code composes it |
+| `clock`; `ProfileClock` | No | `{ now(): string }`, Clock's `ClockPort`: synchronous, answering a UTC ISO 8601 instant such as `2026-11-05T14:30:00.000Z`; the same clock the host gives Clock and every capability. Clock's system clock without it. An answer Clock rejects, or a failure, fails the operation as `unavailable`. Only server code composes it |
 
 ### Disclosure context
 
@@ -143,7 +143,7 @@ The host also:
 
 ### Testing
 
-`createProfileTestPorts()` (also `@nuxt-layers/profile/testing`) returns stand-ins for every port but the database, to pass to `composeProfile` in tests: `keyWrapper` (a fresh random key), `disclosureContext`, `subjectResolver`, `accessDecision`, `notifier` (records to `sent`, delivers nothing), `requestCoordinator` and `clock`, steered with `signIn(principalId, { authenticatedAt?, assurance? })`, `signOut()`, `relate(viewerId, subjectId, relationship, groupId?)`, `setStanding(subjectId, standing)`, `setDeparturePolicy(groupId, attribution | null)`, `grant(viewerId, permission, groupId)` and `setNow(date | null)`. It throws unless `NODE_ENV` is `test` or the caller passes `{ demonstration: true }`. The database is always real PostgreSQL.
+`createProfileTestPorts()` (also `@nuxt-layers/profile/testing`) returns stand-ins for every port but the database, to pass to `composeProfile` in tests: `keyWrapper` (a fresh random key), `disclosureContext`, `subjectResolver`, `accessDecision`, `notifier` (records to `sent`, delivers nothing), `requestCoordinator` and `clock`, steered with `signIn(principalId, { authenticatedAt?, assurance? })`, `signOut()`, `relate(viewerId, subjectId, relationship, groupId?)`, `setStanding(subjectId, standing)`, `setDeparturePolicy(groupId, attribution | null)`, `grant(viewerId, permission, groupId)` and `setNow(instant | null)` (a UTC ISO 8601 string; `signIn`'s `authenticatedAt` is one too). It throws unless `NODE_ENV` is `test` or the caller passes `{ demonstration: true }`. The database is always real PostgreSQL.
 
 ### HTTP API (`/api/profile`)
 
@@ -238,3 +238,4 @@ Any screen drawing Profile, the default ones included, must:
 - A held closed record is readable by no function; `eraseProfile` is refused until the hold ends.
 - Operators' functions are server-only; exposing them over HTTP breaks the contract.
 - A Profile contact email is independent of the host's sign-in email.
+- Every time Profile answers is a canonical UTC instant string from Clock; dates on the default pages are shown in Clock's configured `timeZone` (UTC unless the host sets it).

@@ -9,6 +9,11 @@ import { fileURLToPath } from 'node:url'
 export default defineNuxtConfig({
   compatibilityDate: '2026-06-30',
 
+  // Clock owns dates and times (Layer Standard §5): every time Profile keeps,
+  // judges or shows goes through it. Its settings (`runtimeConfig.public.clock`)
+  // are the host's.
+  extends: ['@nuxt-layers/clock'],
+
   // Presentation (default pages and components), registered only when
   // `profile.presentation` is true. The core below never depends on it.
   modules: [fileURLToPath(new URL('./modules/presentation', import.meta.url))],

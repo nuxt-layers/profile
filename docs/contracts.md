@@ -15,6 +15,7 @@ Profile answers two questions: **what describes this person**, and **what may th
 | Identities, groups, tenants, memberships, a person's standing | The host's directory | The disclosure-context port (§9) and Profile's own commands (§8.1), onto which the host maps its directory's changes |
 | Sign-in identifiers, credentials, sessions | Authentication | Never: a contact email here is independent of a sign-in email there |
 | Domain records | Domain capabilities | They store Identity's identifiers and ask Profile for names |
+| Dates and times: the current time, arithmetic, comparison, interchange formats, time zones and formatting | Clock (a package dependency) | Every time through Clock's operations (§16); Profile reimplements none |
 
 ## 2. Keys
 
@@ -150,7 +151,7 @@ Each is passed to `composeProfile` under its key (`database`, `keyWrapper`, `dis
 | `ProfileRequestCoordinator` | When a declared part is `coordinated` | Each coordinated part of an access request (§14); a failure rejects that part only. Declaring a coordinated part without it fails composition |
 | `ProfileAccessDecision` | For `administration` lookups | Whether the viewer holds one of Profile's permissions on a group now, by the host's access decision |
 | `ProfileNotifier` | For verification | Delivers a verification code by email or SMS (§15); nothing else |
-| `ProfileClock` | No: the system clock without it | The current time, `{ now(): Date }`, the same clock the host gives every capability (§16) |
+| `ProfileClock` | No: Clock's system clock without it | The current time, `{ now(): string }` (Clock's `ClockPort`, a UTC ISO 8601 instant), the same clock the host gives every capability (§16) |
 
 Profile's own declaration of its permission (`PROFILE_PERMISSIONS`), for the host to register with its access decision:
 
@@ -311,10 +312,14 @@ The person verifies a saved `email` or `phone_number`: Profile sends a 6-digit c
 
 ## 16. Time
 
-Profile reads the current time from the clock the host supplies (`composeProfile({ clock: { now } })`), as iam-integration's architecture §7 ([resources](../RESOURCES.md)) asks of every member; without one, it uses the system clock. A host supplies the same clock to every member, or none.
+Profile reads the current time from the clock the host supplies (`composeProfile({ clock: { now } })`), as iam-integration's architecture §7 ([resources](../RESOURCES.md)) asks of every member; without one, it uses Clock's system clock. A host supplies the same clock to every member, or none.
+
+Clock owns dates and times (Layer Standard §5; Clock's contract in [resources](../RESOURCES.md)), so Profile reimplements none of it. The port is Clock's `ClockPort`, `{ now(): string }`, answering a UTC ISO 8601 instant. Profile's server code reads it through a Clock instance (`createClock` in UTC, private to `server/internal/clock.ts`) and does every addition (elapsed days and seconds for holds, archives, escalation, retention, codes and windows; a calendar month, clamped to the month's last day, for a request's due date), comparison and conversion (driver values and supplied instants through `parseInterchange('rfc3339' | 'epochMilliseconds')`, UUIDv7 milliseconds through `formatInterchange`) with Clock's operations. The default pages format dates with `useClock().format` in the pages' locale and Clock's configured time zone, so SSR and hydration agree; `useProfileNames` times its cache with Clock too. The contract (`contracts/`, `shared/`) still imports only zod: its instant schemas check wire shape only, and every time is re-read through Clock on the server.
+
+**Open gap with Clock.** Profile validates the `zoneinfo` attribute against the runtime's IANA list (`Intl.supportedValuesOf('timeZone')`) in its contract schema, and the details page offers that list. Clock's contract owns time zones but offers no operation that lists or validates a zone name alone, and the contract may import only zod. The gap is raised with Clock (Layer Standard §5); once Clock offers such an operation, Profile adopts it and removes its own list.
 
 - Every time Profile keeps or judges comes from the clock: the times it writes (records, keys, erasures, departures, requests, parts, holds, closures, codes, the outbox) and events' `occurredAt`; when a hold, a request's due date or escalation, an access archive, a verification code or its sending window, and a lookup rate-limit window ends; and whether a sign-in is recent enough for the endpoints that need one. The database judges no time of its own: each such time is passed to it from the clock.
-- A clock that throws, or answers anything but a valid `Date`, fails the operation as `unavailable`. Profile never falls back to another time.
+- A clock that throws, or answers anything Clock rejects as an instant (`CLOCK_INVALID_INPUT`), fails the operation as `unavailable`; no `ClockError` crosses Profile's boundary. Profile never falls back to another time.
 - The clock is trusted like a key: whoever supplies it can end a hold, an archive or a code's life early. Only the host composes it, from server code; no request can set or move it. A clock that can be moved is for tests only.
 
 ## 17. End of life

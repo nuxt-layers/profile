@@ -359,7 +359,7 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
 
     // Half the deadline passes with group B unrenamed: operators are told, once.
     const later = new Date(Date.parse(opened.openedAt) + 20 * 86_400_000)
-    const atLater = () => createService({ ...base(), now: () => later })
+    const atLater = () => createService({ ...base(), clock: () => ({ now: () => later.toISOString() }) })
     await atLater().maintain()
     await atLater().maintain()
     const escalations = (await outbox()).filter(e => e.type === 'profile.request-escalated' && e.data.requestId === opened.requestId)
@@ -380,7 +380,7 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
 
     const hold = await service().placeHold({ identityId: person, parts: ['permissions'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 60_000).toISOString(), correlationId: correlationId() })
     const after = new Date(Date.now() + 120_000)
-    const result = await createService({ ...base(), now: () => after }).maintain()
+    const result = await createService({ ...base(), clock: () => ({ now: () => after.toISOString() }) }).maintain()
     expect(result.holdsEnded).toBeGreaterThanOrEqual(1)
     expect((await service().listHolds({ identityId: person }))[0]).toMatchObject({ holdId: hold.holdId, endedAt: expect.any(String) })
     expect((await outbox()).filter(e => e.type === 'profile.legal-hold-ended').at(-1)?.data).toMatchObject({ holdId: hold.holdId, released: ['permissions'], identityClosed: false, reasonCode: 'expired' })
@@ -493,7 +493,7 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
 
   it('deletes delivered events, old completed requests and old ended holds under retention, never a held person\'s request', async () => {
     let at = new Date()
-    const timed = () => createService({ ...base(), now: () => at })
+    const timed = () => createService({ ...base(), clock: () => ({ now: () => at.toISOString() }) })
     await timed().relayOutbox({ limit: 1000, publish: async () => {} })
     const person = uuidv7()
     await provision(person)

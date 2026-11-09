@@ -1,4 +1,5 @@
 import type {
+  ProfileClock,
   DepartureFacts,
   DisclosureContext,
   DisclosureSettings,
@@ -44,7 +45,6 @@ import {
   PROFILE_SUSPENDED_PEOPLE_PERMISSION,
   PROFILE_VERIFICATION_POLICY,
   profileSubjectSchema,
-  requestDueAt,
   settlePartSchema,
   standingInGroup,
   VERIFIABLE_ATTRIBUTES,
@@ -70,7 +70,7 @@ import {
 } from '../../contracts'
 import type { PoolClientLike } from '../database/migrations'
 import { quoteSchema } from '../database/migrations'
-import { timeFrom } from './clock'
+import { profileTime } from './clock'
 import { aad, codeDigest, newCode, newDataKey, open, sameDigest, seal, uuidv7 } from './crypto'
 
 /**
@@ -93,8 +93,8 @@ export interface ServiceDependencies {
   accessDecision?: () => ProfileAccessDecision
   /** The host's notification port; required for contact-detail verification. */
   notifier?: () => ProfileNotifier
-  /** The host's clock (or the system clock); every time Profile keeps or judges comes from it. */
-  now?: () => Date
+  /** The host's clock (or Clock's system clock without it), read at each use; every time Profile keeps or judges comes from it. */
+  clock?: () => ProfileClock | undefined
   /** The retention periods; the defaults without them. */
   retention?: () => ProfileRetention
   /** The host's request parts beside Profile's own; Profile's only without them. */
@@ -138,11 +138,11 @@ function parse<T>(run: () => T): T {
   }
 }
 
-export function createService({ pool, schema, keys, disclosure, coordinator = () => missing('ProfileRequestCoordinator'), accessDecision = () => missing('ProfileAccessDecision'), notifier = () => missing('ProfileNotifier'), now: clockNow = () => new Date(), retention = () => resolveProfileRetention(), requestParts = () => resolveProfileRequestParts() }: ServiceDependencies) {
+export function createService({ pool, schema, keys, disclosure, coordinator = () => missing('ProfileRequestCoordinator'), accessDecision = () => missing('ProfileAccessDecision'), notifier = () => missing('ProfileNotifier'), clock: hostClock = () => undefined, retention = () => resolveProfileRetention(), requestParts = () => resolveProfileRequestParts() }: ServiceDependencies) {
   const s = quoteSchema(schema)
-  /** The clock's time; an invalid answer fails closed as `unavailable`. */
-  const clock = { now: clockNow }
-  const now = (): Date => timeFrom(clock)
+  /** Times through Clock over the host's clock; an invalid answer fails closed as `unavailable`. */
+  const time = profileTime(hostClock)
+  const now = (): string => time.now()
 
   async function transaction<T>(run: (client: Client) => Promise<T>): Promise<T> {
     let client: Client
@@ -170,7 +170,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
 
   function event<T extends ProfileEventType>(type: T, data: Extract<ProfileEvent, { type: T }>['data'], correlationId: string): ProfileEvent {
     const at = now()
-    return { eventId: uuidv7(at.getTime()), type, occurredAt: at.toISOString(), correlationId, data } as ProfileEvent
+    return { eventId: uuidv7(time.epochMilliseconds(at)), type, occurredAt: at, correlationId, data } as ProfileEvent
   }
 
   async function emit(client: Client, profileEvent: ProfileEvent): Promise<void> {
@@ -216,7 +216,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     catch {
       throw new ProfileFailure('unavailable', 'key wrapping failed')
     }
-    const at = now().toISOString()
+    const at = now()
     const inserted = await client.query(
       `insert into ${s}."subject_key" ("identity_id", "key_version", "wrapped_key", "created_at") values ($1, $2, $3, $4) on conflict do nothing returning 1`,
       [identityId, wrapped.version, wrapped.wrapped, at],
@@ -270,7 +270,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   async function writeRecord(client: Client, identityId: string, record: StoredRecord): Promise<void> {
     await client.query(
       `update ${s}."record" set "ciphertext" = $2, "disclosure" = $3::jsonb, "version" = "version" + 1, "updated_at" = $4 where "identity_id" = $1`,
-      [identityId, seal(record.key, JSON.stringify(record.attributes), aad.record(identityId)), JSON.stringify(record.settings), now().toISOString()],
+      [identityId, seal(record.key, JSON.stringify(record.attributes), aad.record(identityId)), JSON.stringify(record.settings), now()],
     )
   }
 
@@ -404,7 +404,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     await client.query(`delete from ${s}."subject_key" where "identity_id" = $1`, [identityId])
     const { rows } = await client.query(
       `insert into ${s}."erased" ("identity_id", "reason_code", "erased_at") values ($1, $2, $3) on conflict do nothing returning 1`,
-      [identityId, reasonCode, now().toISOString()],
+      [identityId, reasonCode, now()],
     )
     if (rows.length === 0) return false
     await emit(client, event('profile.anonymised', { identityId, reasonCode }, correlationId))
@@ -452,9 +452,8 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   // Data-subject requests, legal holds and closure (docs/contracts.md §14)
   // -------------------------------------------------------------------------
 
-  const iso = (value: unknown) => new Date(value as string).toISOString()
+  const iso = (value: unknown) => time.canonical(value)
   const isoOrNull = (value: unknown) => (value == null ? null : iso(value))
-  const DAY_MS = 86_400_000
 
   /** Requests matching `where` (on `r`), newest first, as views. */
   async function requestViews(client: Client | PostgresPoolLike, where: string, values: unknown[]): Promise<RequestView[]> {
@@ -472,7 +471,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         .map(part => ({ part: part.part, status: part.status, reasonCode: part.reasonCode, updatedAt: iso(part.updatedAt) })), part => part.part)
       const completedAt = isoOrNull(row.completed_at)
       const archiveUntil = row.type === 'access' && completedAt && row.archive_deleted_at == null
-        ? new Date(Date.parse(completedAt) + PROFILE_REQUEST_POLICY.archiveDays * DAY_MS).toISOString()
+        ? time.addDays(completedAt, PROFILE_REQUEST_POLICY.archiveDays)
         : null
       return {
         requestId: row.request_id as string,
@@ -487,7 +486,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         escalatedAt: isoOrNull(row.escalated_at),
         groupIds: row.group_ids as string[],
         parts,
-        archiveUntil: archiveUntil && Date.parse(archiveUntil) > now().getTime() ? archiveUntil : null,
+        archiveUntil: archiveUntil && time.compare(archiveUntil, now()) > 0 ? archiveUntil : null,
       }
     })
   }
@@ -496,7 +495,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   async function heldParts(client: Client | PostgresPoolLike, identityId: string): Promise<Set<RequestPart>> {
     const { rows } = await client.query(
       `select distinct unnest("parts") as "part" from ${s}."legal_hold" where "identity_id" = $1 and "ended_at" is null and "ends_at" > $2`,
-      [identityId, now().toISOString()],
+      [identityId, now()],
     ) as { rows: { part: RequestPart }[] }
     return new Set(rows.map(row => row.part))
   }
@@ -508,7 +507,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
    * (the correction is done). Announced as `profile.group-disposed`.
    */
   async function disposeGroup(client: Client, groupId: string, correlationId: string): Promise<void> {
-    const at = now().toISOString()
+    const at = now()
     const { rows: renamed } = await client.query(
       `update ${s}."request_group" g set "renamed_at" = $2 from ${s}."request" r
        where r."request_id" = g."request_id" and g."group_id" = $1 and g."renamed_at" is null and r."status" = 'open'
@@ -530,16 +529,16 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
    * past their periods. A completed request of a person an active hold
    * covers is kept. Announced only when something was deleted, with counts.
    */
-  async function applyRetention(at: Date): Promise<{ outboxEvents: number, requests: number, legalHolds: number }> {
+  async function applyRetention(at: string): Promise<{ outboxEvents: number, requests: number, legalHolds: number }> {
     const periods = retention()
-    const before = (days: number) => new Date(at.getTime() - days * DAY_MS).toISOString()
+    const before = (days: number) => time.addDays(at, -days)
     return transaction(async (client) => {
       const outbox = await client.query(`delete from ${s}."outbox" where "published_at" is not null and "published_at" <= $1 returning 1`, [before(periods.outboxDays)])
       // Requests and holds through the owner's function, which holds the floors and the hold rule itself.
-      const { rows } = await client.query(`select ${s}.apply_retention($1, $2, $3) as "result"`, [at.toISOString(), periods.requestDays, periods.endedHoldDays])
+      const { rows } = await client.query(`select ${s}.apply_retention($1, $2, $3) as "result"`, [at, periods.requestDays, periods.endedHoldDays])
       const records = rows[0]?.result as { requests: number, legalHolds: number }
       const counts = { outboxEvents: outbox.rows.length, requests: records.requests, legalHolds: records.legalHolds }
-      if (counts.outboxEvents + counts.requests + counts.legalHolds > 0) await emit(client, event('profile.retention-applied', counts, uuidv7(at.getTime())))
+      if (counts.outboxEvents + counts.requests + counts.legalHolds > 0) await emit(client, event('profile.retention-applied', counts, uuidv7(time.epochMilliseconds(at))))
       return counts
     })
   }
@@ -558,7 +557,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     )
     if (rows.length === 0 || rows[0]!.request_status !== 'open') return
     if (rows.some(row => row.status === 'pending' || row.status === 'held')) return
-    await client.query(`update ${s}."request" set "status" = 'completed', "completed_at" = $2 where "request_id" = $1`, [requestId, now().toISOString()])
+    await client.query(`update ${s}."request" set "status" = 'completed', "completed_at" = $2 where "request_id" = $1`, [requestId, now()])
     const parts = orderRequestParts(requestParts(), rows
       .map(row => ({ part: row.part as RequestPart, status: row.status as PartStatus, reasonCode: (row.reason_code as string | null) ?? null })), part => part.part)
     await emit(client, event('profile.request-completed', { requestId, identityId: rows[0]!.identity_id as string, parts }, rows[0]!.correlation_id as string))
@@ -572,7 +571,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
        where r."request_id" = p."request_id" and r."identity_id" = $1 and r."type" = $2 and r."status" = 'open'
          and p."part" = any ($3::text[]) and p."status" = any ($5::text[])
        returning p."request_id"`,
-      [identityId, type, parts, status, from, now().toISOString()],
+      [identityId, type, parts, status, from, now()],
     )
     for (const requestId of new Set(rows.map(row => row.request_id as string))) await checkCompletion(client, requestId)
   }
@@ -594,7 +593,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       [identityId, closed, directory],
     )
     for (const row of rows) {
-      await client.query(`update ${s}."request_part" set "status" = 'done', "updated_at" = $2 where "request_id" = $1 and "part" = $3`, [row.request_id, now().toISOString(), directory])
+      await client.query(`update ${s}."request_part" set "status" = 'done', "updated_at" = $2 where "request_id" = $1 and "part" = $3`, [row.request_id, now(), directory])
       await checkCompletion(client, row.request_id as string)
     }
   }
@@ -606,12 +605,12 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
    * follow: each other holdable part a hold covers waits as `held`.
    */
   async function closeSubject(client: Client, identityId: string, correlationId: string): Promise<void> {
-    await client.query(`insert into ${s}."closed_identity" ("identity_id", "closed_at") values ($1, $2) on conflict do nothing`, [identityId, now().toISOString()])
+    await client.query(`insert into ${s}."closed_identity" ("identity_id", "closed_at") values ($1, $2) on conflict do nothing`, [identityId, now()])
     const held = await heldParts(client, identityId)
     if (held.has('profile')) {
       await client.query(
         `insert into ${s}."held_closure" ("identity_id", "closed_at") select "identity_id", $2::timestamptz from ${s}."subject_key" where "identity_id" = $1 on conflict do nothing`,
-        [identityId, now().toISOString()],
+        [identityId, now()],
       )
       await setParts(client, identityId, 'erasure', ['profile'], 'held', ['pending'])
     }
@@ -632,7 +631,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   async function endHold(client: Client, holdId: string, reasonCode: string, correlationId: string): Promise<boolean> {
     const ended = await client.query(
       `update ${s}."legal_hold" set "ended_at" = $2, "end_reason" = $3 where "hold_id" = $1 and "ended_at" is null returning "identity_id", "parts"`,
-      [holdId, now().toISOString(), reasonCode],
+      [holdId, now(), reasonCode],
     )
     const hold = ended.rows[0]
     if (!hold) return false
@@ -718,7 +717,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         const sealed = seal(record.key, JSON.stringify(bundle ?? null), aad.requestPart(identityId, requestId, row.part))
         const updated = await client.query(
           `update ${s}."request_part" set "status" = 'done', "ciphertext" = $3, "updated_at" = $4 where "request_id" = $1 and "part" = $2 and "status" = 'pending' returning 1`,
-          [requestId, row.part, sealed, now().toISOString()],
+          [requestId, row.part, sealed, now()],
         )
         if (updated.rows.length > 0) await checkCompletion(client, requestId)
       })
@@ -743,7 +742,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   /** Runs a command once: records its id and applies it in one transaction; `duplicate` if the id was already applied. */
   async function once(command: { commandId: string }, run: (client: Client) => Promise<void>): Promise<ProfileCommandResult> {
     return transaction(async (client) => {
-      const fresh = await client.query(`insert into ${s}."processed_event" ("event_id", "processed_at") values ($1, $2) on conflict do nothing returning 1`, [command.commandId, now().toISOString()])
+      const fresh = await client.query(`insert into ${s}."processed_event" ("event_id", "processed_at") values ($1, $2) on conflict do nothing returning 1`, [command.commandId, now()])
       if (fresh.rows.length === 0) return 'duplicate'
       await run(client)
       return 'applied'
@@ -824,7 +823,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         await client.query(
           `insert into ${s}."departure" ("group_id", "identity_id", "ended_at", "anonymised") values ($1, $2, $3, true)
            on conflict ("group_id", "identity_id") do update set "name_ciphertext" = null, "pseudonym" = null, "anonymised" = true`,
-          [groupId, subjectId, now().toISOString()],
+          [groupId, subjectId, now()],
         )
         await emit(client, event('profile.departure-anonymised', { identityId: subjectId, groupId }, correlationId))
       })
@@ -837,8 +836,8 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     async consumeLookup(input: { viewerId: unknown }): Promise<void> {
       const viewerId = parse(() => identifierSchema.parse(input.viewerId))
       const { requests, windowSeconds } = PROFILE_LOOKUP_RATE_LIMIT
-      const at = now().getTime()
-      const windowStart = new Date(at - (at % (windowSeconds * 1000))).toISOString()
+      const at = time.epochMilliseconds(now())
+      const windowStart = time.fromEpochMilliseconds(at - (at % (windowSeconds * 1000)))
       const count = await transaction(async (client) => {
         await client.query(`delete from ${s}."lookup_window" where "viewer_id" = $1 and "window_start" < $2`, [viewerId, windowStart])
         const { rows } = await client.query(
@@ -877,7 +876,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         settings: record?.settings ?? DEFAULT_DISCLOSURE_SETTINGS,
         departures: rows.map(row => ({
           groupId: row.group_id as string,
-          endedAt: new Date(row.ended_at as string).toISOString(),
+          endedAt: time.canonical(row.ended_at),
           name: row.name_ciphertext && record ? openOrFail(record.key, row.name_ciphertext as Uint8Array, aad.departureName(subjectId, row.group_id as string)) : null,
           pseudonym: (row.pseudonym as number | null) ?? null,
           anonymised: row.anonymised === true,
@@ -899,7 +898,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     /** The person's membership of a group ended: keep how they are shown there. */
     async recordDeparture(input: unknown): Promise<ProfileCommandResult> {
       const command = parse(() => departureCommandSchema.parse(input))
-      const endedAt = new Date(command.endedAt).toISOString()
+      const endedAt = time.canonical(command.endedAt)
       return once(command, client => snapshotDeparture(client, command.subjectId, command.groupId, endedAt))
     },
 
@@ -926,7 +925,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
           `update ${s}."request_group" g set "renamed_at" = $2 from ${s}."request" r
            where r."request_id" = g."request_id" and g."group_id" = $1 and g."renamed_at" is null and r."status" = 'open'
            returning r."identity_id"`,
-          [command.groupId, now().toISOString()],
+          [command.groupId, now()],
         )
         for (const person of new Set(rows.map(row => row.identity_id as string))) await settleDirectoryParts(client, person)
       })
@@ -960,7 +959,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     async rewrapKeys(input: { limit?: number } = {}): Promise<number> {
       const limit = Math.max(1, Math.min(Math.trunc(input.limit ?? 100), 1000))
       const current = keys.currentVersion()
-      const at = now().toISOString()
+      const at = now()
       return transaction(async (client) => {
         const { rows } = await client.query(
           `select "identity_id", "key_version", "wrapped_key" from ${s}."subject_key" where "key_version" <> $1 order by "identity_id" limit $2 for update skip locked`,
@@ -1016,7 +1015,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
           published.push(row.sequence)
         }
         if (published.length > 0) {
-          await client.query(`update ${s}."outbox" set "published_at" = $2 where "sequence" = any ($1::bigint[])`, [published, now().toISOString()])
+          await client.query(`update ${s}."outbox" set "published_at" = $2 where "sequence" = any ($1::bigint[])`, [published, now()])
         }
         return published.length
       })
@@ -1052,16 +1051,16 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       // An access request with coordinated parts needs the coordination port: refuse it before recording anything if the host has not composed it.
       if (request.type === 'access' && parts.some(part => declared.coordinated.includes(part))) coordinator()
       const opened = now()
-      const requestId = uuidv7(opened.getTime())
-      const dueAt = requestDueAt(opened).toISOString()
+      const requestId = uuidv7(time.epochMilliseconds(opened))
+      const dueAt = time.addMonths(opened, PROFILE_REQUEST_POLICY.dueMonths)
       await transaction(async (client) => {
         if (await isWithheld(client, request.subjectId)) throw new ProfileFailure('forbidden')
         await client.query(
           `insert into ${s}."request" ("request_id", "identity_id", "type", "origin", "reason_code", "correlation_id", "opened_at", "due_at") values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [requestId, request.subjectId, request.type, request.origin, request.reasonCode ?? null, request.correlationId, opened.toISOString(), dueAt],
+          [requestId, request.subjectId, request.type, request.origin, request.reasonCode ?? null, request.correlationId, opened, dueAt],
         )
         for (const part of parts) {
-          await client.query(`insert into ${s}."request_part" ("request_id", "part", "updated_at") values ($1, $2, $3)`, [requestId, part, opened.toISOString()])
+          await client.query(`insert into ${s}."request_part" ("request_id", "part", "updated_at") values ($1, $2, $3)`, [requestId, part, opened])
         }
         for (const groupId of groupIds) {
           await client.query(`insert into ${s}."request_group" ("request_id", "group_id") values ($1, $2)`, [requestId, groupId])
@@ -1129,7 +1128,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
           `update ${s}."request_part" p set "status" = $3, "reason_code" = $4, "updated_at" = $5 from ${s}."request" r
            where r."request_id" = p."request_id" and p."request_id" = $1 and p."part" = $2 and r."status" = 'open' and p."status" in ('pending', 'held')
            returning 1`,
-          [settled.requestId, settled.part, settled.outcome, settled.outcome === 'exempt' ? settled.reasonCode : null, now().toISOString()],
+          [settled.requestId, settled.part, settled.outcome, settled.outcome === 'exempt' ? settled.reasonCode : null, now()],
         )
         if (rows.length === 0) throw new ProfileFailure('conflict', 'not-pending')
         await checkCompletion(client, settled.requestId)
@@ -1160,18 +1159,24 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     async placeHold(input: unknown): Promise<LegalHoldView> {
       const hold = parse(() => placeHoldSchema.parse(input))
       const at = now()
-      const endsAt = Date.parse(hold.endsAt)
-      if (!(endsAt > at.getTime()) || endsAt > at.getTime() + PROFILE_REQUEST_POLICY.holdMaxDays * DAY_MS) throw new ProfileFailure('validation-failed', 'invalid-end')
+      let endsAt: string
+      try {
+        endsAt = time.canonical(hold.endsAt)
+      }
+      catch {
+        throw new ProfileFailure('validation-failed', 'invalid-end')
+      }
+      if (time.compare(endsAt, at) <= 0 || time.compare(endsAt, time.addDays(at, PROFILE_REQUEST_POLICY.holdMaxDays)) > 0) throw new ProfileFailure('validation-failed', 'invalid-end')
       const holdable = requestParts().holdable
       if (hold.parts.some(part => !holdable.includes(part))) throw new ProfileFailure('validation-failed', 'invalid-part')
-      const holdId = uuidv7(at.getTime())
+      const holdId = uuidv7(time.epochMilliseconds(at))
       const parts = holdable.filter(part => hold.parts.includes(part))
       const row = await transaction(async (client) => {
         const { rows } = await client.query(
           `insert into ${s}."legal_hold" ("hold_id", "identity_id", "parts", "reason_code", "placed_at", "ends_at") values ($1, $2, $3, $4, $5, $6) returning *`,
-          [holdId, hold.identityId, parts, hold.reasonCode, at.toISOString(), new Date(endsAt).toISOString()],
+          [holdId, hold.identityId, parts, hold.reasonCode, at, endsAt],
         )
-        await emit(client, event('profile.legal-hold-placed', { holdId, identityId: hold.identityId, parts, reasonCode: hold.reasonCode, endsAt: new Date(endsAt).toISOString() }, hold.correlationId))
+        await emit(client, event('profile.legal-hold-placed', { holdId, identityId: hold.identityId, parts, reasonCode: hold.reasonCode, endsAt }, hold.correlationId))
         return rows[0]!
       })
       return holdView(row)
@@ -1208,20 +1213,20 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
      */
     async maintain(): Promise<{ holdsEnded: number, archivesDeleted: number, escalated: number, accessRetried: number, codesExpired: number, retention: { outboxEvents: number, requests: number, legalHolds: number } }> {
       const at = now()
-      const atIso = at.toISOString()
+      const atIso = at
       const expiredHolds = await poolRead(() => pool.query(
         `select "hold_id" from ${s}."legal_hold" where "ended_at" is null and "ends_at" <= $1 order by "ends_at" limit 100`,
         [atIso],
       ) as Promise<{ rows: { hold_id: string }[] }>)
       let holdsEnded = 0
       for (const { hold_id: holdId } of expiredHolds.rows) {
-        if (await transaction(client => endHold(client, holdId, 'expired', uuidv7(at.getTime())))) holdsEnded += 1
+        if (await transaction(client => endHold(client, holdId, 'expired', uuidv7(time.epochMilliseconds(at))))) holdsEnded += 1
       }
       const archivesDeleted = await transaction(async (client) => {
         const { rows } = await client.query(
           `update ${s}."request" set "archive_deleted_at" = $1
            where "type" = 'access' and "status" = 'completed' and "archive_deleted_at" is null and "completed_at" <= $2 returning "request_id"`,
-          [atIso, new Date(at.getTime() - PROFILE_REQUEST_POLICY.archiveDays * DAY_MS).toISOString()],
+          [atIso, time.addDays(at, -PROFILE_REQUEST_POLICY.archiveDays)],
         )
         if (rows.length > 0) await client.query(`update ${s}."request_part" set "ciphertext" = null where "request_id" = any ($1::text[])`, [rows.map(row => row.request_id)])
         return rows.length
@@ -1230,7 +1235,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         const due = await client.query(
           `update ${s}."request" set "escalated_at" = $1 where "status" = 'open' and "escalated_at" is null and "due_at" <= $2
            returning "request_id", "identity_id", "correlation_id"`,
-          [atIso, new Date(at.getTime() + PROFILE_REQUEST_POLICY.escalateDaysBeforeDue * DAY_MS).toISOString()],
+          [atIso, time.addDays(at, PROFILE_REQUEST_POLICY.escalateDaysBeforeDue)],
         )
         for (const row of due.rows) {
           await emit(client, event('profile.request-escalated', { requestId: row.request_id as string, identityId: row.identity_id as string, reasonCode: 'due-soon' }, row.correlation_id as string))
@@ -1290,20 +1295,20 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
           `select "window_start", "sends" from ${s}."contact_verification" where "identity_id" = $1 and "attribute" = $2 for update`,
           [subjectId, attribute],
         )
-        let windowStart = rows[0] ? new Date(rows[0].window_start as string) : at
+        let windowStart = rows[0] ? time.canonical(rows[0].window_start) : at
         let sends = (rows[0]?.sends as number | undefined) ?? 0
-        if (at.getTime() - windowStart.getTime() >= policy.sendWindowSeconds * 1000) {
+        if (time.compare(time.addSeconds(windowStart, policy.sendWindowSeconds), at) <= 0) {
           windowStart = at
           sends = 0
         }
         if (sends >= policy.sends) return { status: 'rate-limited' as const, expiresAt: null }
         const code = newCode(policy.codeDigits)
-        const expiresAt = new Date(at.getTime() + policy.codeSeconds * 1000).toISOString()
+        const expiresAt = time.addSeconds(at, policy.codeSeconds)
         await client.query(
           `insert into ${s}."contact_verification" ("identity_id", "attribute", "code_digest", "expires_at", "attempts", "window_start", "sends") values ($1, $2, $3, $4, 0, $5, $6)
            on conflict ("identity_id", "attribute") do update set "code_digest" = excluded."code_digest", "expires_at" = excluded."expires_at", "attempts" = 0,
              "window_start" = excluded."window_start", "sends" = excluded."sends"`,
-          [subjectId, attribute, codeDigest(record.key, { identityId: subjectId, attribute, value, code }), expiresAt, windowStart.toISOString(), sends + 1],
+          [subjectId, attribute, codeDigest(record.key, { identityId: subjectId, attribute, value, code }), expiresAt, windowStart, sends + 1],
         )
         try {
           await notifier().send({ channel: VERIFICATION_CHANNELS[attribute], to: value, purpose: 'contact-verification', attribute, code, locale: record.attributes.locale ?? null, expiresInSeconds: policy.codeSeconds })
@@ -1338,7 +1343,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
           [subjectId, attribute],
         )
         const pending = rows[0]
-        if (!record || value === undefined || !pending?.code_digest || !(new Date(pending.expires_at as string).getTime() > now().getTime())) return 'expired' as const
+        if (!record || value === undefined || !pending?.code_digest || !(time.compare(time.canonical(pending.expires_at), now()) > 0)) return 'expired' as const
         if (!sameDigest(codeDigest(record.key, { identityId: subjectId, attribute, value, code }), pending.code_digest as Uint8Array)) {
           const attempts = (pending.attempts as number) + 1
           await client.query(

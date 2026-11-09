@@ -223,17 +223,6 @@ export type LegalHoldView = z.infer<typeof legalHoldViewSchema>
 /** `POST /api/profile/me/requests` */
 export const personRequestSchema = z.strictObject({ type: z.enum(PERSON_REQUEST_TYPES) })
 
-/** A request's due date: the same day of the month `months` later, or that month's last day. */
-export function requestDueAt(openedAt: Date, months: number = PROFILE_REQUEST_POLICY.dueMonths): Date {
-  const due = new Date(openedAt.getTime())
-  const day = due.getUTCDate()
-  due.setUTCDate(1)
-  due.setUTCMonth(due.getUTCMonth() + months)
-  const last = new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth() + 1, 0)).getUTCDate()
-  due.setUTCDate(Math.min(day, last))
-  return due
-}
-
 /**
  * How long Profile keeps records once their purpose is over, in days: delivered outbox events,
  * completed data-subject requests and ended legal holds. A host may set

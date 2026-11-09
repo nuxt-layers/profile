@@ -21,7 +21,7 @@ describe('createProfileTestPorts', () => {
   it('resolves only the principal signed in, and nobody after sign-out', async () => {
     const ports = createProfileTestPorts()
     expect(await ports.subjectResolver.resolve({})).toBeNull()
-    ports.signIn(viewer, { authenticatedAt: new Date('2030-01-01T00:00:00Z') })
+    ports.signIn(viewer, { authenticatedAt: '2030-01-01T00:00:00.000Z' })
     expect(await ports.subjectResolver.resolve({})).toEqual({
       principalId: viewer,
       authenticatedAt: '2030-01-01T00:00:00.000Z',
@@ -58,11 +58,11 @@ describe('createProfileTestPorts', () => {
     await ports.notifier.send(message)
     expect(ports.sent).toEqual([message])
 
-    const fixed = new Date('2031-02-03T04:05:06Z')
+    const fixed = '2031-02-03T04:05:06.000Z'
     ports.setNow(fixed)
-    expect(ports.clock.now().toISOString()).toBe(fixed.toISOString())
+    expect(ports.clock.now()).toBe(fixed)
     ports.setNow(null)
-    expect(Math.abs(ports.clock.now().getTime() - Date.now())).toBeLessThan(1000)
+    expect(Math.abs(Date.parse(ports.clock.now()) - Date.now())).toBeLessThan(1000)
   })
 })
 

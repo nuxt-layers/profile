@@ -4,6 +4,7 @@
 
 ## 2026-11-09
 
+- **Dates in the person's own time zone.** Profile owns a person's display time zone, `zoneinfo` (iam-integration improvement register D4, nuxt-layers/iam-integration#27). The default pages now show the signed-in person's dates (requests made, groups left) in it, through the new auto-imported `useProfileDates()`; without one, Clock's configured `timeZone` as before. Deadlines stay in the zone they were counted in, named. Hosts showing times elsewhere pass the person's `zoneinfo` to `useClock({ timeZone })` and keep no separate time-zone preference.
 - The rename-escalation halfway point now uses Clock's `midpoint` (nuxt-layers/clock#29, added by Clock's PR #30; the lockfile follows Clock's `master` at `96e71c0`). It keeps Clock's full nanosecond precision instead of averaging epoch milliseconds; existing stored values are unchanged. Profile works out no other elapsed difference by hand: its lookup rate-limit window and UUIDv7 identifiers use epoch milliseconds as a protocol format, not as a difference.
 - **Clock's new exports adopted** (nuxt-layers/clock#25, #26, #27, resolved by Clock's PR #28; the lockfile follows Clock's `master` at `bab3caa`).
   - Errors: Profile recognises Clock's failures with `instanceof ClockError` from `@nuxt-layers/clock/server`, no longer by reading a `CLOCK_` code prefix. They still fail closed as `unavailable`.

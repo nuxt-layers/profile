@@ -3,7 +3,7 @@ import { addComponentsDir, addImportsDir, createResolver, defineNuxtModule, exte
 /**
  * Registers the layer's presentation: the default pages, the `Profile*`
  * components and the presentation auto-imports (`useProfileText`,
- * `useProfileAction`, `useProfileRoutes`, `useProfileNames`,
+ * `useProfileAction`, `useProfileRoutes`, `useProfileNames`, `useProfileDates`,
  * `profileClasses`). The core (server, endpoints and `useProfile()`) never
  * depends on any of it.
  *

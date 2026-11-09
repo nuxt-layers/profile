@@ -212,7 +212,7 @@ Request and hold events name parts as stored: `profile` and the host's names.
 | `departures` | `/profile/departures` | Groups left, named by `ProfileGroupName`, with the anonymity choice |
 | `requests` | `/profile/requests` | Own requests, progress and archive download; links to `closeAccount` for deletion |
 
-Components: `ProfilePersonName` (props `identityId`, `groupId = null`, `purpose = 'listing'`, `link = false`; renders "Member" until and unless a name is disclosed) and `ProfileGroupName` (prop `groupId`; the host overrides it with a component of the same name showing the host's group name). Composables: `useProfile()`, `useProfileText()`, `useProfileAction()`, `useProfileRoutes()`, `useProfileNames()`, `forgetProfileNames()` (call when the viewer changes without a page load).
+Components: `ProfilePersonName` (props `identityId`, `groupId = null`, `purpose = 'listing'`, `link = false`; renders "Member" until and unless a name is disclosed) and `ProfileGroupName` (prop `groupId`; the host overrides it with a component of the same name showing the host's group name). Composables: `useProfile()`, `useProfileText()`, `useProfileAction()`, `useProfileRoutes()`, `useProfileNames()`, `useProfileDates()` (the signed-in person's dates in their own `zoneinfo`), `forgetProfileNames()` (call when the viewer changes without a page load).
 
 Styling needs a provider of the SemanticPresentationTheme capability (optional), composed by the host: import that provider's `presentation.css`, then `@nuxt-layers/profile/tailwind.css`, in the host's Tailwind stylesheet. Without it, pages work unstyled. Switch off with `profile.pages.enabled: false` or `profile.presentation: false`.
 
@@ -239,5 +239,6 @@ Any screen drawing Profile, the default ones included, must:
 - A held closed record is readable by no function; `eraseProfile` is refused until the hold ends.
 - Operators' functions are server-only; exposing them over HTTP breaks the contract.
 - A Profile contact email is independent of the host's sign-in email.
-- Every time Profile answers is a canonical UTC instant string from Clock; dates on the default pages are shown in Clock's configured `timeZone` (UTC unless the host sets it), except a request's due date and archive date, which are shown in the deadline zone (`RequestView.timeZone`) and name it.
+- A host showing times elsewhere reads the signed-in person's `zoneinfo` on the server and passes it to `useClock({ timeZone })`; it does not keep a separate time-zone preference, and never uses it for deadlines.
+- Every time Profile answers is a canonical UTC instant string from Clock; dates on the default pages are shown in the signed-in person's own time zone, their `zoneinfo` (the suite's one source of a person's display zone: iam-integration improvement register D4), or in Clock's configured `timeZone` (UTC unless the host sets it) when they have none; except a request's due date and archive date, which are shown in the deadline zone (`RequestView.timeZone`) and name it.
 - `zoneinfo` is checked by Clock (`isValidTimeZone`, spelt exactly, capitals included) on the server and in the details page; `attributeSchemas.zoneinfo` checks its shape only. The picker lists Clock's `timeZones()`; a link such as `Europe/Kiev` is accepted, and a stored value outside the list stays selectable.

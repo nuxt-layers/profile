@@ -4,6 +4,7 @@
 
 ## 2026-11-09
 
+- Dependency review allows no advisories: the simple-git, braces and node-forge exceptions no longer match anything installed, and the `@simple-git/argv-parser` override is gone with simple-git. glob 14.0.2 and minimatch 11.0.1 are forced by override (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249) until nitropack's dependencies accept them.
 - Development toolchain moves to the ADR-0013 baseline: Node.js 26, pnpm 12.16.1 through Corepack, `@types/node` 26 and Nuxt 4.6.3 for development; `zod` ^4.6.7. Hosts' requirements are unchanged (Node.js 22 or later, `nuxt` ^4.5.0).
 - CI sets pnpm up with Corepack instead of a third-party action (ADR-0013 §5). The layer workflow had not started since the move to `nuxt-layers`, most likely because the organisation's Actions policy refuses that action.
 - Theme Manager is declared as `github:nuxt-layers/theme-manager#master`; pnpm 12 records it as an HTTPS Git resolution.

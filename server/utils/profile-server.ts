@@ -189,6 +189,25 @@ export async function runProfileMaintenance() {
   return (await service()).maintain()
 }
 
+/** One unit of scheduled work, in ADR-0012's shared shape. `every` is in seconds. */
+export interface ProfileTask {
+  name: string
+  every: number
+  run: () => Promise<unknown>
+}
+
+/**
+ * PUBLIC. Profile's scheduled work (ADR-0012 §2), for the host's one
+ * scheduler: maintenance every 300 seconds (ends holds, deletes expired
+ * archives and codes, escalates and retries requests, applies retention).
+ * `every` is the interval in seconds; a run that rejects should be retried
+ * at the next interval. Key rotation (`rewrapProfileKeys`) is not periodic:
+ * the host runs it after changing its wrapping-key version.
+ */
+export function profileTasks(): ProfileTask[] {
+  return [{ name: 'profile.maintenance', every: 300, run: () => runProfileMaintenance() }]
+}
+
 // ---------------------------------------------------------------------------
 // Contact-detail verification (docs/contracts.md §15)
 // ---------------------------------------------------------------------------

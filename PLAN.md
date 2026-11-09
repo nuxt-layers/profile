@@ -15,7 +15,8 @@
 | 8. Release 1.0 | Contract version 1 and `CHANGELOG.md` | Done (tags `v1.0.0`, `v1.1.0` kept as historical records); further releases suspended by ADR-0008 |
 | 9. Organisation migration | `nuxt-layers` identity, `@nuxt-layers` scope, dependencies on `master`, `CONTRACT.md`, `RESOURCES.md`, `STORAGE-REGISTER.md` and this plan at the root (ADR-0004, ADR-0008, ADR-0010, ADR-0012); CI on the ADR-0013 toolchain (Node.js 26, pnpm 12 through Corepack) | Complete |
 | 10. Trivial composition | ADR-0012: `examples/minimal-host` built and smoke-tested in CI within the 50-line budget; `composeProfile` as the only way to compose, in one call | Complete |
-| 11. Shared shapes | ADR-0012: PostgreSQL-backed fakes of every port for tests; review of the subject resolver, access decision, mail and scheduled-work ports against the shared shapes (`resolveCaller`, `decide`, `send`, `tasks`) with iam-integration | Next |
+| 11. Shared shapes | ADR-0012: stand-ins for every port but the database (`createProfileTestPorts`, refused outside tests unless a demonstration opts in), used by the minimal host; scheduled work in the shared shape (`profileTasks`); the caller, access and mail gaps recorded ([specification](docs/contracts.md) §18) | Complete |
+| 12. Shared-shape adoption | Adopt `resolveCaller`, `decide` and `send` once ADR-0012 §2a is decided (the caller's sign-in time, the mail channel), in the same change as iam-integration's adapters | Waiting on architecture |
 
 ## Dependencies on other capabilities
 

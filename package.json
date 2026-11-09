@@ -14,6 +14,7 @@
     "./contracts": "./contracts/index.ts",
     "./capability": "./capability.json",
     "./presentation": "./presentation/index.ts",
+    "./testing": "./server/utils/profile-testing.ts",
     "./tailwind.css": "./tailwind.css"
   },
   "files": [

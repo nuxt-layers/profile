@@ -168,6 +168,8 @@ Profile's permission, for the host to add to Authorisation's catalogue (`PROFILE
 | `recordProfileRequestPart({ identityId, part, correlationId })` | The host's handler reports Authentication's or Authorisation's erasure done |
 | `placeProfileLegalHold(...)`, `releaseProfileLegalHold(...)`, `listProfileLegalHolds({ identityId })` | Legal holds (§14), for operators |
 | `profileLegalHoldParts(identityId)` | The parts under hold now, for the host's closure handler |
+| `profileTasks()` | ADR-0012's scheduled-work shape: `profile.maintenance`, every 300 seconds, running `runProfileMaintenance()` |
+| `createProfileTestPorts({ demonstration? })` | Stand-ins for every port but the database (ADR-0012 §3), refused unless `NODE_ENV` is `test` or a demonstration opts in |
 | `runProfileMaintenance()` | Ends holds on their date, deletes expired archives, escalates requests, retries failed access parts, drops expired codes |
 | `startProfileContactVerification(...)`, `confirmProfileContactVerification(...)` | §15 |
 
@@ -300,3 +302,15 @@ Profile's part of iam-integration's group deletion and retention processes ([res
 
 **Retention.** `runProfileMaintenance` also deletes delivered outbox events after `outboxDays` (30, within 7 to 365), completed data-subject requests after `requestDays` (730, within 365 to 2555) unless a legal hold covers the person, and ended legal holds after `endedHoldDays` (365, within 30 to 2555). A host sets them with `composeProfile`'s `retention`, within `PROFILE_RETENTION_BOUNDS`; shorter than a default needs a `riskTreatment` reference. Requests and holds are records the runtime role cannot delete: only the owner's `apply_retention` function deletes them, and it never goes below the hard bounds. A run that deleted anything writes `profile.retention-applied` with counts only.
 
+
+## 18. Shared shapes: open questions
+
+ADR-0012 §2 asks every capability for the same caller, access, mail and scheduled-work shapes ([resources](../RESOURCES.md)). Profile meets the clock, events and scheduled-work shapes. Three ports differ, and are kept until the architecture decides, because adopting the shared shape as written would lose something Profile relies on or break iam-integration's adapters:
+
+| Shared shape | Profile's port | What blocks adopting it |
+|---|---|---|
+| `resolveCaller(event) → { tenantId, subjectId \| null, assurance }` | `subjectResolver.resolve(event) → { principalId, authenticatedAt, assurance } \| null` | The shared caller has no sign-in time, which Profile's recent-sign-in rule (§12) needs; Profile does not use `tenantId` |
+| `decide(caller, action, resource) → { allowed, reason }` | `accessDecision.allows({ subject, permission, groupId }) → boolean` | Equivalent meaning; a rename that iam-integration's `profileAccessDecisionFromAuthorisation` must follow in the same change |
+| `send({ to, template, data })` | `notifier.send({ channel, to, purpose, attribute, code, locale, expiresInSeconds })` | Profile also sends by SMS; the shared shape has no channel |
+
+ADR-0012 §2a, which would place these meanings in each capability's contract, is a proposed amendment, not yet accepted. Profile changes these ports once the amendment is decided and iam-integration reconciles its adapters with it (`PLAN.md`, phase 11).

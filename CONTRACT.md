@@ -74,7 +74,7 @@ The host also:
 
 1. Relays Identity's events to `applyProfileIdentityEvent` (iam-integration's `createIdentityEventHandler` with `applyProfileEvent`, `heldParts: profileLegalHoldParts`, `recordRequestPart: recordProfileRequestPart`).
 2. Drains Profile's outbox with `relayProfileOutbox({ publish })` to name caches and to iam-integration's `createProfileEventHandler`.
-3. Schedules `runProfileMaintenance()` every few minutes, and `rewrapProfileKeys()` after each change of wrapping-key version.
+3. Runs `profileTasks()` on its one scheduler: each `{ name, every, run }` with `every` in seconds (today `profile.maintenance` every 300). Runs `rewrapProfileKeys()` after each change of wrapping-key version.
 4. Gives operators server-only tooling over the request and legal-hold functions; never HTTP.
 5. Takes `subjectId` and `viewerId` only from the signed-in principal, never from a request body.
 
@@ -100,8 +100,13 @@ The host also:
 | `relayProfileOutbox({ publish, limit? })` | Publishes events at least once, in order |
 | `openProfileRequest`, `listProfileRequests`, `getProfileRequest`, `getProfileRequestArchive`, `settleProfileRequestPart`, `recordProfileRequestPart` | Data-subject requests (`access`, `restriction`, `correction`, `erasure`) and their parts |
 | `placeProfileLegalHold`, `releaseProfileLegalHold`, `listProfileLegalHolds`, `profileLegalHoldParts` | Legal holds (at most 7 years) deferring erasure of `profile`, `authentication` or `authorisation` parts |
+| `profileTasks()` | Profile's scheduled work, `{ name, every, run }[]` (`every` in seconds) |
 | `runProfileMaintenance()` | Ends holds, deletes expired archives, escalates requests, retries access parts, drops expired codes, applies retention |
 | `startProfileContactVerification`, `confirmProfileContactVerification` | Verifies a saved `email` or `phone_number` |
+
+### Testing
+
+`createProfileTestPorts()` (also `@nuxt-layers/profile/testing`) returns stand-ins for every port but the database, to pass to `composeProfile` in tests: `keyWrapper` (a fresh random key), `disclosureContext`, `subjectResolver`, `accessDecision`, `notifier` (records to `sent`, delivers nothing), `requestCoordinator` and `clock`, steered with `signIn(principalId, { authenticatedAt?, assurance? })`, `signOut()`, `relate(viewerId, subjectId, relationship, groupId?)`, `setStanding(subjectId, standing)`, `setDeparturePolicy(groupId, attribution | null)`, `grant(viewerId, permission, groupId)` and `setNow(date | null)`. It throws unless `NODE_ENV` is `test` or the caller passes `{ demonstration: true }`. The database is always real PostgreSQL.
 
 ### HTTP API (`/api/profile`)
 

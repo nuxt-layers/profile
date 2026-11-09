@@ -4,6 +4,7 @@
 
 ## 2026-11-09
 
+- Housekeeping: the repository keeps only `master`. The 1.0.0 and 1.1.0 releases are recorded in this changelog only; no release tags or release branches are kept.
 - **Dates in the person's own time zone.** Profile owns a person's display time zone, `zoneinfo` (iam-integration improvement register D4, nuxt-layers/iam-integration#27). The default pages now show the signed-in person's dates (requests made, groups left) in it, through the new auto-imported `useProfileDates()`; without one, Clock's configured `timeZone` as before. Deadlines stay in the zone they were counted in, named. Hosts showing times elsewhere pass the person's `zoneinfo` to `useClock({ timeZone })` and keep no separate time-zone preference.
 - The rename-escalation halfway point now uses Clock's `midpoint` (nuxt-layers/clock#29, added by Clock's PR #30; the lockfile follows Clock's `master` at `96e71c0`). It keeps Clock's full nanosecond precision instead of averaging epoch milliseconds; existing stored values are unchanged. Profile works out no other elapsed difference by hand: its lookup rate-limit window and UUIDv7 identifiers use epoch milliseconds as a protocol format, not as a difference.
 - **Clock's new exports adopted** (nuxt-layers/clock#25, #26, #27, resolved by Clock's PR #28; the lockfile follows Clock's `master` at `bab3caa`).
@@ -41,14 +42,14 @@
 - Moved from the `nuxt4-layers` organisation to `nuxt-layers`: the package is now `@nuxt-layers/profile` (formerly `@nuxt4-layers/profile`), and the repository `nuxt-layers/profile`. Hosts change their dependency to `git+https://github.com/nuxt-layers/profile.git#master` and every `@nuxt4-layers/profile` import, `extends` entry and stylesheet import to `@nuxt-layers/profile`. No API, runtime key, environment variable, schema or event changes.
 - Theme Manager (development only) now follows `nuxt-layers/theme-manager` on `master`.
 - Root `CONTRACT.md`, `RESOURCES.md`, `PLAN.md` (formerly `docs/roadmap.md`) and `STORAGE-REGISTER.md`; `docs/composition-contract.md` folded into `CONTRACT.md`. External links now appear only in `RESOURCES.md`.
-- Versioning follows ADR-0008: the semantic-versioning promise is withdrawn while releases are suspended, and the existing `v1.0.0` and `v1.1.0` tags remain historical records, not consumer pins. Contract version 1 is unchanged.
+- Versioning follows ADR-0008: the semantic-versioning promise is withdrawn while releases are suspended, and the earlier 1.0.0 and 1.1.0 releases are recorded here only, not as consumer pins. Contract version 1 is unchanged.
 
-## Before the move (tag `v1.1.0`)
+## Before the move (1.1.0)
 
 - Access requests gain a `configuration` part: the configuration layer's settings for the person's own account, answered through the coordination port like another member's part, and `null` where the host composes no configuration layer. `REQUEST_PARTS` and `COORDINATED_PARTS` gain the value, with migration `0005_configuration_part`; erasure requests are unchanged, since the configuration layer deletes those settings itself on closure. An addition: hosts' coordination ports answer the new part through iam-integration's `profileRequestCoordinatorFromMembers`.
 - The layer's own tests pass on Windows as well as on Linux and macOS: the paths they compare with import specifiers and routes are written with `/` on every platform (`tests/support/paths.ts`). On Windows the contract, architecture and endpoint tests used to fail, or check nothing.
 
-## 1.0.0 (2026-10-11, tag `v1.0.0`)
+## 1.0.0 (2026-10-11)
 
 Everything in contract version 1 ([specification](docs/contracts.md)).
 

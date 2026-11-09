@@ -23,7 +23,9 @@
 
 ## Dependencies on other capabilities
 
-- **Identity** (or any host directory) issues the identifiers and answers the disclosure-context port; the host maps its provisioning, departures, closure, pausing, renames and group disposal onto Profile's commands.
-- **Authentication** supplies the signed-in principal whose identifier is the subject or viewer. It is never a source of profile data.
-- **Authorisation** answers whether a viewer may see a group's suspended members (`profile.suspended-people:view`), and exports and erases its own part of a person's data.
-- **Authentication** exports its own part of a person's data (sign-in identifiers, factors, sessions); it is never a source of profile data.
+The capabilities Profile requires are named in `capability.json`; Profile itself states each dependency in its own terms, and the host translates.
+
+- **The host's directory** issues the identifiers and answers the disclosure-context port; the host maps its provisioning, departures, closure, pausing, renames and group disposal onto Profile's commands.
+- **The host's sign-in service** supplies the signed-in principal whose identifier is the subject or viewer, and exports its own part of a person's data. It is never a source of profile data.
+- **The host's access decision** answers whether a viewer may see a group's suspended members (`profile.suspended-people:view`).
+- **A SemanticPresentationTheme provider**, optional, styles the default pages.

@@ -6,11 +6,11 @@ Decisions taken in Profile's design round, with the alternatives considered.
 
 ## 1. Scope of the first round
 
-Foundation and storage together: the contract, composition, PostgreSQL storage, encryption, Identity's events, erasure and export. Endpoints and pages follow as separate phases.
+Foundation and storage together: the contract, composition, PostgreSQL storage, encryption, the directory's changes, erasure and export. Endpoints and pages follow as separate phases.
 
 ## 2. Attributes
 
-OpenID Connect standard claim names: `name`, `given_name`, `family_name`, `preferred_username`, `locale`, `zoneinfo`, plus contact `email` and `phone_number`, independent of Authentication's sign-in identifiers. No picture or postal address yet: a picture needs a file-storage port and image checks.
+OpenID Connect standard claim names: `name`, `given_name`, `family_name`, `preferred_username`, `locale`, `zoneinfo`, plus contact `email` and `phone_number`, independent of any sign-in identifiers. No picture or postal address yet: a picture needs a file-storage port and image checks.
 
 ## 3. Disclosure
 
@@ -42,20 +42,20 @@ Each person's attributes are encrypted with their own data key, which Profile st
 ## 9. The default pages (phase 3)
 
 - **Which pages:** the person's own profile, one page with sections for details, disclosure and the download, and a page for another person's profile as the viewer may see it. Separate pages per area were considered; one page keeps the record's version in one place, so the sections never undo each other. Leaving the person page to hosts was considered; every host would rebuild the same disclosure-bound view.
-- **The person-name component:** `ProfilePersonName` takes the identifier, the group in view and the purpose as props, and the host's `IdentityPersonName` is a thin wrapper that passes Identity's route through. Profile overriding `IdentityPersonName` itself was considered and rejected: it would tie Profile to Identity's component name and to the order of layers, against the rule that members never import one another.
+- **The person-name component:** `ProfilePersonName` takes the identifier, the group in view and the purpose as props, and a host's own person-name component is a thin wrapper that passes its route through. Profile overriding the host's component itself was considered and rejected: it would tie Profile to another layer's component name and to the order of layers, against the rule that members never import one another.
 - **Links from names:** optional and off by default, and only for a disclosed name while the person page is on; a fallback ("Member", "Former member") never links, so a link says nothing about who exists. Always linking was considered; it spends lookups on pages that only list names.
 - **The document title** of the person page stays "Profile", never the name, so names do not reach browser history, tab lists or analytics through it.
-- **Departure anonymity in one group:** the setting for every future departure is on the page; choosing it for one group already left needs that group's name, which is Identity's, and follows in phase 4 with the requests.
+- **Departure anonymity in one group:** the setting for every future departure is on the page; choosing it for one group already left needs that group's name, which is the host directory's, and follows in phase 4 with the requests.
 
 ## 10. Requests and verification (phase 4)
 
 Decided with the owner on 2026-10-10.
 
-- **Coordination:** Profile records each request and each member's part, and asks the other members through a coordination port that iam-integration's adapter builds from their server-only exports; erasure, correction and restriction parts are completed by the members' own events. An events-only design was considered; the export would then need a callback carrying personal data. Coordinating only exports in this phase was considered; it would leave erasure untracked.
-- **Legal holds:** per member part (Profile, Authentication, Authorisation), with a reason code and an end date. Closure still goes ahead; a held part is erased when its hold ends. Holding only Profile's own data was considered, and so was blocking the whole erasure, Identity's closure included; the first leaves other members' data unprotected, the second keeps a person who asked to leave on the platform.
+- **Coordination:** Profile records each request and each member's part, and asks the other members through a coordination port that the host builds from their server-only exports; erasure, correction and restriction parts are completed by the members' own events. An events-only design was considered; the export would then need a callback carrying personal data. Coordinating only exports in this phase was considered; it would leave erasure untracked.
+- **Legal holds:** per part (Profile's and each part the host declares), with a reason code and an end date. Closure still goes ahead; a held part is erased when its hold ends. Holding only Profile's own data was considered, and so was blocking the whole erasure, the directory's closure included; the first leaves other members' data unprotected, the second keeps a person who asked to leave on the platform.
 - **Verification:** a 6-digit code through a host notifier, 10 minutes, 5 attempts, 5 sends an hour, kept as an HMAC under the person's own key bound to the value. A signed link for email was considered; two mechanisms to secure and test. Leaving verification to the host was considered; every host would re-implement the code rules.
-- **Suspended members:** an `administration` lookup names them, by display name only, to viewers Authorisation allows `profile.suspended-people:view` on the group. The permission is `high`, not `medium` as first proposed: Authorisation's built-in `member` and `viewer` roles hold `*:view`, which would have reached a `medium` permission, and Authorisation rates disclosing personal data `high`. Showing their disclosed details too was considered, and so was a Profile page listing them; the first discloses more than administrators need, the second would need Identity's member list in Profile.
+- **Suspended members:** an `administration` lookup names them, by display name only, to viewers the host's access decision allows `profile.suspended-people:view` on the group. The permission is `high`, not `medium` as first proposed: the suite's built-in `member` and `viewer` roles hold `*:view`, which would have reached a `medium` permission, and disclosing personal data is rated `high`. Showing their disclosed details too was considered, and so was a Profile page listing them; the first discloses more than administrators need, the second would need the directory's member list in Profile.
 - **Membership standing:** with a group context, a member's own paused or suspended membership hides them there, as the pausing and suspension process says; before phase 4 only the identity's standing counted.
-- **Groups left:** Identity names them in its own view of the person (`formerGroupNames`), and the host backs `ProfileGroupName` with them, as it backs `IdentityPersonName` with `ProfilePersonName`. A names map passed in by the host was considered; less reusable. Identifiers alone were considered; people cannot tell the groups apart.
+- **Groups left:** the host's directory names them, and the host backs `ProfileGroupName` with those names, as it backs its own person-name component with `ProfilePersonName`. A names map passed in by the host was considered; less reusable. Identifiers alone were considered; people cannot tell the groups apart.
 - **Opening requests:** the person opens access and restriction requests from the page, after a recent sign-in; erasure is account closure, and correction is the profile itself. Operators open any type through server functions with a reason code; there is still no erasure endpoint.
 

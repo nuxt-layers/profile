@@ -20,7 +20,7 @@ import { PROFILE_API_PREFIX } from '../../contracts'
  * session cookie is forwarded during server-side rendering.
  */
 export function useProfile() {
-  // Untyped by route on purpose, as Identity's and Authentication's: Nitro's
+  // Untyped by route on purpose: Nitro's
   // typed-route inference over a host's whole route table can exceed
   // TypeScript's depth limit in larger compositions.
   const request = useRequestFetch() as unknown as (url: string, options: { method?: string, query?: Record<string, string>, body?: object }) => Promise<unknown>

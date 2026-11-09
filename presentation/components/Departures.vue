@@ -4,7 +4,8 @@ import type { ProfileDepartureView } from '../../contracts'
 /**
  * PUBLIC. The groups the person has left, and the choice, for each, to be
  * shown there as "Former member" from now on. The group's name comes from
- * `ProfileGroupName`, which the host backs with Identity's. The choice
+ * `ProfileGroupName`, which the host backs with its directory's
+ * names. The choice
  * cannot be undone, so it asks for confirmation first.
  */
 const profile = useProfile()

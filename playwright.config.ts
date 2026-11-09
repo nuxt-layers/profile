@@ -3,7 +3,7 @@ import { DATABASE, ORIGIN, PORT, RUNTIME_PASSWORD, RUNTIME_ROLE } from './tests/
 
 /**
  * Browser tests of the default pages against the built playground (with
- * Theme Manager styles) and a disposable PostgreSQL database. Requires
+ * the playground's theme styles) and a disposable PostgreSQL database. Requires
  * PROFILE_TEST_DATABASE_URL. Set PLAYWRIGHT_CHROMIUM_EXECUTABLE to use a
  * preinstalled Chromium instead of the one Playwright downloads.
  */

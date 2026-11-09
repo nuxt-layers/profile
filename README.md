@@ -8,7 +8,7 @@ Hosts compose it from [CONTRACT.md](CONTRACT.md) alone.
 
 ## Owns
 
-- The personal data that describes a person: names, contact details and personal preferences, keyed by an opaque Identity identifier.
+- The personal data that describes a person: names, contact details and personal preferences, keyed by an opaque identifier from the host's directory.
 - What each context may see (fellow group members, the tenant, nobody), under the person's control.
 - Applying each group's departure data policy (`keep-name`, `pseudonymise`, `anonymise`) to how a leaver is shown, and the leaver's right to anonymisation.
 - The person's requests for access, correction, export and erasure, coordinating the other suite members' parts.
@@ -18,12 +18,12 @@ Hosts compose it from [CONTRACT.md](CONTRACT.md) alone.
 
 | Not here | Owned by |
 |---|---|
-| Credentials and sign-in identifiers (including a sign-in email address) | Authentication |
-| Identities, groups, tenants and memberships | Identity |
-| Roles, grants and access decisions | Authorisation |
+| Credentials and sign-in identifiers (including a sign-in email address) | The host's sign-in service |
+| Identities, groups, tenants and memberships | The host's directory |
+| Roles, grants and access decisions | The host's access decisions |
 | Domain records (they hold identifiers, never names) | Domain capabilities |
 
-Profile may hold the same email address as a sign-in identifier held by Authentication, as an independent contact detail. Changing one does not change the other unless the person asks for both, and erasure covers both.
+Profile may hold the same email address as a sign-in identifier held by the host's sign-in service, as an independent contact detail. Changing one does not change the other unless the person asks for both, and erasure covers both.
 
 ## Interfaces
 
@@ -35,7 +35,7 @@ Profile may hold the same email address as a sign-in identifier held by Authenti
 | Consumes from the host | Key-wrapping port | Wraps each person's data key with a versioned host key (KMS, HSM, vault) |
 | Provides to domain capabilities | `lookupProfileDisplayNames` | Names for up to 200 identifiers, as the viewer may see them |
 | Provides to the person | Own record, disclosure settings, departure anonymity, export | `/api/profile/*` endpoints, `useProfile()` and the default pages |
-| Provides to hosts' pages | `ProfilePersonName` | A person's name as the viewer may see it, for Identity's `IdentityPersonName` and any other page |
+| Provides to hosts' pages | `ProfilePersonName` | A person's name as the viewer may see it, for any page of the host's that names people |
 | Publishes | `profile.created`, `profile.changed`, `profile.departure-anonymised`, `profile.anonymised` | Identifiers, attribute names and codes only |
 
 ## Documentation

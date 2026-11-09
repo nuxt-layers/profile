@@ -34,7 +34,7 @@ export default defineNuxtConfig({
         /**
          * Where the pages link. The presentation module fills in its own page
          * paths (empty while the pages are off); hosts set `signIn`, and
-         * `closeAccount` for their account-closure page (Identity's), where
+         * `closeAccount` for their account-closure page, where
          * having one's data deleted begins.
          */
         routes: {

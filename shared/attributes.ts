@@ -3,11 +3,10 @@ import { safeNameSchema } from './safe-names'
 
 /**
  * The attributes of a person's record (docs/contracts.md §3), named as the
- * OpenID Connect standard claims (iam-integration improvement register
- * item 17). Profile is their only canonical source: Authentication never
- * stores or seeds them.
+ * OpenID Connect standard claims. Profile is their only canonical source:
+ * the host's sign-in service never stores or seeds them.
  *
- * Contact details are independent of Authentication's sign-in identifiers.
+ * Contact details are independent of any sign-in identifiers.
  * They are stored unverified (`email_verified` and `phone_number_verified`
  * false) until the person types back a code Profile sent through the host's
  * notification port (§15), and become unverified again whenever they change.

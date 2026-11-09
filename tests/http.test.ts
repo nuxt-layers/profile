@@ -51,7 +51,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
   const relationships = new Map<string, DisclosureContext['subjects'][number]['relationship']>()
   const standings = new Map<string, DisclosureContext['subjects'][number]['standing']>()
   const membershipStates = new Map<string, 'active' | 'paused' | 'suspended'>()
-  // Stand-ins for the host's adapters: the other members' exports, Authorisation, and the notifier.
+  // Stand-ins for the host's adapters: the other parts' exports, the access decision, and the notifier.
   const administrators = new Set<string>()
   const decisions: { principalId: string, permission: string, groupId: string }[] = []
   const sent: { to: string, code: string, attribute: string, channel: string }[] = []
@@ -355,7 +355,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
     expect(sent.every(message => message.channel === 'sms' && message.to === '+447700900123')).toBe(true)
   })
 
-  it('names a suspended member to the group\'s administrators only, by display name only, asking Authorisation once', async () => {
+  it('names a suspended member to the group\'s administrators only, by display name only, asking the access decision once', async () => {
     const admin = await person()
     const member = await person()
     const suspended = await person()
@@ -375,7 +375,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
     expect((await call('GET', `/api/profile/people/${suspended}?groupId=${groupId}`, { as: admin })).data).toEqual({ subjectId: suspended, displayName: { kind: 'hidden' }, attributes: {} })
     expect(await call('POST', '/api/profile/display-names', { as: admin, body: { subjectIds: [suspended], purpose: 'administration' } })).toMatchObject({ status: 400 })
 
-    // Nobody suspended in the answer: Authorisation is not asked.
+    // Nobody suspended in the answer: the access decision is not asked.
     decisions.length = 0
     membershipStates.delete(suspended)
     expect((await call('POST', '/api/profile/display-names', { as: member, body })).data[0].displayName).toEqual({ kind: 'name', value: 'Sam Suspended' })

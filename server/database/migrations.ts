@@ -252,6 +252,19 @@ revoke all on function {{schema}}.apply_retention_before(timestamptz, timestampt
 drop function {{schema}}.apply_retention(timestamptz, integer, integer);
 `,
   },
+  {
+    // When a correction or erasure is raised to operators for a group not
+    // yet renamed: halfway to its due date, computed through Clock when the
+    // request opens rather than by the database at each maintenance run.
+    // Existing requests are backfilled once with the same halfway point the
+    // earlier query computed, so none changes when it escalates.
+    id: '0009_rename_escalate_at',
+    sql: `
+alter table {{schema}}."request" add column "rename_escalate_at" timestamptz;
+update {{schema}}."request" set "rename_escalate_at" = "opened_at" + ("due_at" - "opened_at") / 2;
+alter table {{schema}}."request" alter column "rename_escalate_at" set not null;
+`,
+  },
 ]
 
 const SCHEMA_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/

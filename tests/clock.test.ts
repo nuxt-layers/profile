@@ -96,6 +96,12 @@ describe('calendar deadlines', () => {
     same(time.addMonths('2027-01-31T08:00:00.000Z', 1), '2027-02-28T08:00:00.000Z')
   })
 
+  it('finds the halfway point in elapsed time, whatever the zone', () => {
+    same(london().midpoint('2026-10-10T08:00:00.000Z', '2026-11-10T08:00:00.000Z'), '2026-10-25T20:00:00.000Z')
+    same(london().midpoint('2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.003Z'), '2026-01-01T00:00:00.001Z')
+    expect(() => london().midpoint('not a time', '2026-01-01T00:00:00.000Z')).toThrow(ProfileFailure)
+  })
+
   it('keeps elapsed seconds as elapsed time, whatever the zone', () => {
     same(london().addSeconds('2026-03-29T00:30:00.000Z', 3600), '2026-03-29T01:30:00.000Z')
   })

@@ -1058,11 +1058,13 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       const opened = now()
       const requestId = uuidv7(time.epochMilliseconds(opened))
       const dueAt = time.addMonths(opened, PROFILE_REQUEST_POLICY.dueMonths)
+      // A group not renamed by halfway to the due date is raised to operators.
+      const renameEscalateAt = time.midpoint(opened, dueAt)
       await transaction(async (client) => {
         if (await isWithheld(client, request.subjectId)) throw new ProfileFailure('forbidden')
         await client.query(
-          `insert into ${s}."request" ("request_id", "identity_id", "type", "origin", "reason_code", "correlation_id", "opened_at", "due_at") values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [requestId, request.subjectId, request.type, request.origin, request.reasonCode ?? null, request.correlationId, opened, dueAt],
+          `insert into ${s}."request" ("request_id", "identity_id", "type", "origin", "reason_code", "correlation_id", "opened_at", "due_at", "rename_escalate_at") values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [requestId, request.subjectId, request.type, request.origin, request.reasonCode ?? null, request.correlationId, opened, dueAt, renameEscalateAt],
         )
         for (const part of parts) {
           await client.query(`insert into ${s}."request_part" ("request_id", "part", "updated_at") values ($1, $2, $3)`, [requestId, part, opened])
@@ -1248,7 +1250,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         const renames = await client.query(
           `update ${s}."request" r set "rename_escalated_at" = $1
            where r."status" = 'open' and r."rename_escalated_at" is null and r."type" in ('correction', 'erasure')
-             and r."opened_at" + (r."due_at" - r."opened_at") / 2 <= $1
+             and r."rename_escalate_at" <= $1
              and exists (select 1 from ${s}."request_group" g where g."request_id" = r."request_id" and g."renamed_at" is null)
            returning r."request_id", r."identity_id", r."correlation_id"`,
           [atIso],

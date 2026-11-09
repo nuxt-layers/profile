@@ -41,6 +41,8 @@ export interface ProfileTime {
   addMonths(instant: string, months: number): string
   /** -1, 0 or 1 as `a` is before, the same as or after `b`. */
   compare(a: string, b: string): -1 | 0 | 1
+  /** The instant halfway between `a` and `b` in elapsed time, to the millisecond (earlier on a tie). */
+  midpoint(a: string, b: string): string
 }
 
 /** Clock's own failures, and anything else, never cross Profile's boundary raw. */
@@ -93,6 +95,11 @@ export function profileTime(source?: Source<ProfileClock | undefined>, zone: Sou
     addSeconds: (value: string, seconds: number) => guard(() => clock.add(instant(value), { seconds }).value, 'invalid instant'),
     addMonths: (value: string, months: number) => calendar(value, { months }),
     compare: (a: string, b: string) => guard(() => clock.compare(instant(a), instant(b)), 'invalid instant'),
+    // Clock offers no difference between instants, so the halfway point is taken over Clock's own epoch milliseconds, read and written through Clock.
+    midpoint: (a: string, b: string) => guard(() => {
+      const ms = (value: string) => Number(clock.formatInterchange(instant(value), 'epochMilliseconds'))
+      return clock.parseInterchange('epochMilliseconds', Math.floor((ms(a) + ms(b)) / 2)).value
+    }, 'invalid instant'),
   })
 }
 

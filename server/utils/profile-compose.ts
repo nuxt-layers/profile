@@ -9,13 +9,14 @@ import {
   provideProfileKeyWrapper,
   provideProfileNotifier,
   provideProfileRequestCoordinator,
+  provideProfileRequestParts,
   provideProfileRetention,
   provideProfileSubjectResolver,
   startProfileMigrations,
 } from '../internal/composition'
 
 const REQUIRED = ['database', 'keyWrapper', 'disclosureContext'] as const
-const KNOWN = new Set<string>([...REQUIRED, 'subjectResolver', 'requestCoordinator', 'accessDecision', 'notifier', 'clock', 'retention'])
+const KNOWN = new Set<string>([...REQUIRED, 'subjectResolver', 'requestCoordinator', 'accessDecision', 'notifier', 'clock', 'retention', 'requestParts'])
 const PORT_NAMES: Record<typeof REQUIRED[number], string> = {
   database: 'ProfileDatabase',
   keyWrapper: 'ProfileKeyWrapper',
@@ -38,6 +39,10 @@ export function composeProfile(composition: ProfileComposition): Promise<string[
   for (const key of REQUIRED) {
     if (composition[key] == null) throw new ProfileCompositionError(PORT_NAMES[key])
   }
+  // Coordinated parts are answered only through the coordination port: declaring them without it fails closed.
+  if (composition.requestParts?.parts?.some(part => part?.coordinated === true) && composition.requestCoordinator == null) {
+    throw new ProfileCompositionError('ProfileRequestCoordinator')
+  }
   try {
     provideProfileDatabase(composition.database)
     provideProfileKeyWrapper(composition.keyWrapper)
@@ -48,6 +53,7 @@ export function composeProfile(composition: ProfileComposition): Promise<string[
     if (composition.notifier) provideProfileNotifier(composition.notifier)
     if (composition.clock) provideProfileClock(composition.clock)
     if (composition.retention) provideProfileRetention(composition.retention)
+    if (composition.requestParts) provideProfileRequestParts(composition.requestParts)
   }
   catch (error) {
     clearProfileComposition()

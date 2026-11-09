@@ -29,8 +29,9 @@ Profile may hold the same email address as a sign-in identifier held by Authenti
 
 | Direction | Interface | Purpose |
 |---|---|---|
-| Consumes from Identity | Disclosure-context port | The viewer's relationship to each person, the person's standing, and the group's departure data policy |
-| Consumes from Identity | Events `identity.provisioned`, `membership.ended`, `identity.closed` | Create the record, keep how a leaver is shown, erase on closure |
+| Consumes from the host's directory | Disclosure-context port | The viewer's relationship to each person, the person's standing, and the group's departure data policy |
+| Consumes from the host's directory | Commands `provisionProfileRecord`, `recordProfileDeparture`, `closeProfileSubject`, `recordProfilePause`, `recordProfileGroupRenamed`, `disposeProfileGroup` | Create the record, keep how a leaver is shown, erase on closure, settle request parts, dispose of a group's part |
+| Consumes from the host | Request-part declaration (`requestParts`) | The parts of data-subject requests beside Profile's own |
 | Consumes from the host | Key-wrapping port | Wraps each person's data key with a versioned host key (KMS, HSM, vault) |
 | Provides to domain capabilities | `lookupProfileDisplayNames` | Names for up to 200 identifiers, as the viewer may see them |
 | Provides to the person | Own record, disclosure settings, departure anonymity, export | `/api/profile/*` endpoints, `useProfile()` and the default pages |

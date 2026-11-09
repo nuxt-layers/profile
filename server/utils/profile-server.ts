@@ -1,14 +1,19 @@
 import type {
+  ClosureCommand,
+  DepartureCommand,
   DisplayName,
-  IdentityEventLike,
-  LegalHoldPart,
+  GroupDisposalCommand,
+  GroupRenamedCommand,
   LegalHoldView,
   LookupPurpose,
   OpenRequestInput,
+  PauseCommand,
   ProfileAttributes,
+  ProfileCommandResult,
   ProfileDepartureView,
   ProfileEventPublisher,
   ProfileSubject,
+  ProvisionCommand,
   RequestPart,
   RequestView,
   VerifiableAttribute,
@@ -26,6 +31,7 @@ import {
   useProfileNotifier,
   useProfileRetention,
   useProfileRequestCoordinator,
+  useProfileRequestParts,
 } from '../internal/composition'
 
 /**
@@ -49,6 +55,7 @@ async function service() {
     accessDecision: useProfileAccessDecision,
     notifier: useProfileNotifier,
     retention: useProfileRetention,
+    requestParts: useProfileRequestParts,
     // Read at each use, so every time comes from the host's clock (or the system clock).
     now: () => useProfileClock().now(),
   })
@@ -82,8 +89,8 @@ export async function consumeProfileLookup(input: { viewerId: string }): Promise
 /**
  * Display names for up to 200 people as the viewer may see them, for
  * attribution, a listing, or a group's administration listing. The last
- * needs the group and the signed-in `subject` (the viewer), for
- * Authorisation's decision on naming suspended members.
+ * needs the group and the signed-in `subject` (the viewer), for the host's
+ * access decision on naming suspended members.
  */
 export async function lookupProfileDisplayNames(input: { viewerId: string, subjectIds: string[], groupId?: string | null, purpose: LookupPurpose, subject?: ProfileSubject }): Promise<{ subjectId: string, displayName: DisplayName }[]> {
   return (await service()).displayNames(input)
@@ -99,9 +106,40 @@ export async function exportProfileData(input: { subjectId: string }): Promise<{
   return (await service()).exportData(input)
 }
 
-/** Applies one relayed Identity event: provisioning, a membership ending, or closure. */
-export async function applyProfileIdentityEvent(event: IdentityEventLike): Promise<'applied' | 'duplicate' | 'ignored'> {
-  return (await service()).applyIdentityEvent(event)
+// ---------------------------------------------------------------------------
+// Commands (docs/contracts.md §9): the host maps its directory's events onto
+// them. Each is idempotent by `commandId` (pass the event's own identifier)
+// and answers `applied` or `duplicate`.
+// ---------------------------------------------------------------------------
+
+/** A person now exists: Profile creates their empty record and key. Call it for people only; never recreates an erased record. */
+export async function provisionProfileRecord(input: ProvisionCommand): Promise<ProfileCommandResult> {
+  return (await service()).provisionRecord(input)
+}
+
+/** The person's membership of a group ended at `endedAt`: Profile keeps how they are shown there. */
+export async function recordProfileDeparture(input: DepartureCommand): Promise<ProfileCommandResult> {
+  return (await service()).recordDeparture(input)
+}
+
+/** The person's account is closed: Profile erases the record, or keeps it unread while a legal hold covers Profile's part. */
+export async function closeProfileSubject(input: ClosureCommand): Promise<ProfileCommandResult> {
+  return (await service()).closeSubject(input)
+}
+
+/** The person paused their whole account: completes the directory part of their open restriction requests. */
+export async function recordProfilePause(input: PauseCommand): Promise<ProfileCommandResult> {
+  return (await service()).recordPause(input)
+}
+
+/** A group was renamed: completes the directory part of requests that named it, once all they name are renamed. */
+export async function recordProfileGroupRenamed(input: GroupRenamedCommand): Promise<ProfileCommandResult> {
+  return (await service()).recordGroupRenamed(input)
+}
+
+/** A deleted group's disposal is due (call it only then): Profile deletes what it keeps for the group, except held departures. */
+export async function disposeProfileGroup(input: GroupDisposalCommand): Promise<ProfileCommandResult> {
+  return (await service()).disposeGroup(input)
 }
 
 /** Erases a person's record and destroys their key, with a reason code. */
@@ -159,13 +197,13 @@ export async function settleProfileRequestPart(input: { requestId: string, part:
   return (await service()).settlePart(input)
 }
 
-/** For iam-integration's handler: another member's erasure is done. */
-export async function recordProfileRequestPart(input: { identityId: string, part: 'authentication' | 'authorisation', correlationId: string }): Promise<void> {
+/** The host's erasure of one of its declared parts (not the directory part) is done. */
+export async function recordProfileRequestPart(input: { identityId: string, part: RequestPart, correlationId: string }): Promise<void> {
   return (await service()).recordRequestPart(input)
 }
 
 /** An operator places a legal hold on parts of a person's data. */
-export async function placeProfileLegalHold(input: { identityId: string, parts: LegalHoldPart[], reasonCode: string, endsAt: string, correlationId: string }): Promise<LegalHoldView> {
+export async function placeProfileLegalHold(input: { identityId: string, parts: RequestPart[], reasonCode: string, endsAt: string, correlationId: string }): Promise<LegalHoldView> {
   return (await service()).placeHold(input)
 }
 
@@ -174,8 +212,8 @@ export async function releaseProfileLegalHold(input: { holdId: string, reasonCod
   return (await service()).releaseHold(input)
 }
 
-/** The parts under legal hold now, for iam-integration's closure handler (`heldParts`). */
-export async function profileLegalHoldParts(identityId: string): Promise<LegalHoldPart[]> {
+/** The parts under legal hold now, for the host's closure handling. */
+export async function profileLegalHoldParts(identityId: string): Promise<RequestPart[]> {
   return (await service()).heldParts({ identityId })
 }
 

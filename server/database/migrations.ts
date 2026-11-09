@@ -206,6 +206,22 @@ alter table {{schema}}."request_part" drop constraint "request_part_part_check",
   add constraint "request_part_part_check" check ("part" in ('profile', 'identity', 'authentication', 'authorisation', 'configuration'));
 `,
   },
+  {
+    // Profile names only its own part; the host declares the others in
+    // composeProfile (docs/contracts.md §14). Any part name in the code
+    // grammar is stored, so every value already stored stays valid.
+    id: '0006_host_declared_parts',
+    sql: `
+alter table {{schema}}."request_part" drop constraint "request_part_part_check",
+  add constraint "request_part_part_check" check ("part" ~ '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' and length("part") <= 32);
+alter table {{schema}}."legal_hold" drop constraint "legal_hold_parts_check",
+  add constraint "legal_hold_parts_check" check (
+    cardinality("parts") between 1 and 16
+    and array_to_string("parts", ',', '*') ~ '^[a-z][a-z0-9]*(-[a-z0-9]+)*(,[a-z][a-z0-9]*(-[a-z0-9]+)*)*$'
+    and length(array_to_string("parts", ',')) <= 16 * 33
+  );
+`,
+  },
 ]
 
 const SCHEMA_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/

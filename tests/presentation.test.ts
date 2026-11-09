@@ -8,7 +8,7 @@ import {
   PROFILE_ATTRIBUTES,
   PART_STATUSES,
   PROFILE_ERROR_CODES,
-  REQUEST_PARTS,
+  PROFILE_REQUEST_PART,
   REQUEST_STATUSES,
   REQUEST_TYPES,
   SAFE_NAME_PROBLEMS,
@@ -124,7 +124,8 @@ describe('text', () => {
       ...DISPLAY_NAME_SOURCES.map(source => `profile.disclosure.displayNameSource.${source}`),
       ...REQUEST_TYPES.map(type => `profile.requests.type.${type}`),
       ...REQUEST_STATUSES.map(status => `profile.requests.status.${status}`),
-      ...REQUEST_PARTS.map(part => `profile.requests.part.${part}`),
+      `profile.requests.part.${PROFILE_REQUEST_PART}`,
+      'profile.requests.part.other',
       ...PART_STATUSES.map(status => `profile.requests.partStatus.${status}`),
     ]
     expect(keys.filter(key => !has(key))).toEqual([])

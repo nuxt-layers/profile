@@ -66,7 +66,26 @@ export {
 
 // Events
 export type { ProfileEvent, ProfileEventType } from '../shared/events'
-export { IDENTITY_EVENTS_HANDLED, PROFILE_EVENT_PAYLOADS, PROFILE_EVENT_TYPES, profileEventSchema } from '../shared/events'
+export { PROFILE_EVENT_PAYLOADS, PROFILE_EVENT_TYPES, profileEventSchema } from '../shared/events'
+
+// Commands the host gives Profile
+export type {
+  ClosureCommand,
+  DepartureCommand,
+  GroupDisposalCommand,
+  GroupRenamedCommand,
+  PauseCommand,
+  ProfileCommandResult,
+  ProvisionCommand,
+} from '../shared/commands'
+export {
+  closureCommandSchema,
+  departureCommandSchema,
+  groupDisposalCommandSchema,
+  groupRenamedCommandSchema,
+  pauseCommandSchema,
+  provisionCommandSchema,
+} from '../shared/commands'
 
 // HTTP API
 export type { ProfileDepartureView, ProfileOwnView, ProfilePersonView, ProfileSubject } from '../shared/api'
@@ -84,11 +103,11 @@ export {
 
 // Data-subject requests and legal holds
 export type {
-  CoordinatedPart,
-  LegalHoldPart,
   LegalHoldView,
   OpenRequestInput,
   PartStatus,
+  ProfileRequestParts,
+  ProfileRequestPartsDeclaration,
   RequestOrigin,
   RequestPart,
   RequestPartView,
@@ -100,25 +119,29 @@ export type {
   ProfileRetentionSetting,
 } from '../shared/requests'
 export {
-  COORDINATED_PARTS,
-  DEFAULT_REQUEST_PARTS,
-  LEGAL_HOLD_PARTS,
   legalHoldViewSchema,
+  MAX_REQUEST_PARTS,
   openRequestSchema,
   PART_STATUSES,
   PERSON_REQUEST_TYPES,
   personRequestSchema,
   placeHoldSchema,
+  orderRequestParts,
+  PROFILE_REQUEST_PART,
   PROFILE_REQUEST_POLICY,
   PROFILE_RETENTION_BOUNDS,
   profileRetentionInputSchema,
   resolveProfileRetention,
   REQUEST_ORIGINS,
-  REQUEST_PARTS,
+  REQUEST_PART_PATTERN,
   REQUEST_STATUSES,
   REQUEST_TYPES,
   requestDueAt,
+  requestPartDeclarationSchema,
+  requestPartSchema,
+  requestPartsDeclarationSchema,
   requestPartViewSchema,
+  resolveProfileRequestParts,
   requestViewSchema,
   settlePartSchema,
 } from '../shared/requests'
@@ -133,7 +156,7 @@ export {
   verificationCodeSchema,
 } from '../shared/verification'
 
-// Permissions (Authorisation's catalogue)
+// Permissions (Profile's own declaration)
 export type { ProfilePermissionDefinition } from '../shared/permissions'
 export { PROFILE_PERMISSIONS, PROFILE_SUSPENDED_PEOPLE_PERMISSION } from '../shared/permissions'
 
@@ -144,7 +167,6 @@ export { isProfileErrorCode, PROFILE_ERROR_CODES, PROFILE_ERROR_STATUS, ProfileC
 // Ports
 export type {
   DirectoryReadOptions,
-  IdentityEventLike,
   PostgresPoolLike,
   ProfileAccessDecision,
   ProfileClock,

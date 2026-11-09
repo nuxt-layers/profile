@@ -19,9 +19,10 @@ import {
   provideProfileKeyWrapper,
   provideProfileNotifier,
   provideProfileRequestCoordinator,
+  provideProfileRequestParts,
   provideProfileSubjectResolver,
 } from '../server/internal/composition'
-import { applyProfileIdentityEvent, listProfileLegalHolds, placeProfileLegalHold, profileLegalHoldParts, runProfileMaintenance, updateProfile } from '../server/utils/profile-server'
+import { listProfileLegalHolds, provisionProfileRecord, recordProfileDeparture, placeProfileLegalHold, profileLegalHoldParts, runProfileMaintenance, updateProfile } from '../server/utils/profile-server'
 import { createLocalProfileKeyWrapper } from '../server/utils/profile-keys'
 import { createTestDatabase, hasDatabase, requireDatabaseInCi } from './support/database'
 import { toPosix } from './support/paths'
@@ -54,7 +55,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
   const administrators = new Set<string>()
   const decisions: { principalId: string, permission: string, groupId: string }[] = []
   const sent: { to: string, code: string, attribute: string, channel: string }[] = []
-  let authenticationDown = false
+  let signInDown = false
 
   const disclosure: ProfileDisclosureContextPort = {
     async describe(request) {
@@ -88,7 +89,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
 
   async function person(): Promise<string> {
     const identityId = uuidv7()
-    await applyProfileIdentityEvent({ eventId: uuidv7(), type: 'identity.provisioned', occurredAt: new Date().toISOString(), correlationId: uuidv7(), data: { identityId, kind: 'person' } })
+    await provisionProfileRecord({ commandId: uuidv7(), correlationId: uuidv7(), subjectId: identityId })
     return identityId
   }
 
@@ -111,17 +112,26 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
   beforeEach(() => {
     clearProfileComposition()
     resolverFails = false
-    authenticationDown = false
+    signInDown = false
     relationships.clear()
     standings.clear()
     membershipStates.clear()
     administrators.clear()
     decisions.length = 0
     sent.length = 0
+    // The host's parts, named by the host: Profile knows them only by this declaration.
+    provideProfileRequestParts({
+      parts: [
+        { name: 'directory', coordinated: true, directory: true },
+        { name: 'sign-in', coordinated: true, holdable: true },
+        { name: 'permissions', coordinated: true, holdable: true },
+        { name: 'settings', coordinated: true },
+      ],
+    })
     provideProfileRequestCoordinator({
       async exportPart({ identityId, part }) {
-        if (part === 'authentication' && authenticationDown) throw new Error('authentication is down')
-        return part === 'authorisation' ? null : { member: part, identityId }
+        if (part === 'sign-in' && signInDown) throw new Error('sign-in is down')
+        return part === 'permissions' ? null : { part, identityId }
       },
     })
     provideProfileAccessDecision({
@@ -136,7 +146,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
     provideProfileDisclosureContext(disclosure)
     provideProfileSubjectResolver({
       async resolve(event) {
-        if (resolverFails) throw new Error('authentication is down')
+        if (resolverFails) throw new Error('sign-in is down')
         const header = getRequestHeader(event as H3Event, 'x-test-principal')
         if (!header) return null
         const [principalId, age] = header.split('|')
@@ -266,7 +276,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
   it('lists the groups the person has left, for the page to choose anonymity in one', async () => {
     const me = await person()
     const left = uuidv7()
-    await applyProfileIdentityEvent({ eventId: uuidv7(), type: 'membership.ended', occurredAt: new Date().toISOString(), correlationId: uuidv7(), data: { identityId: me, groupId: left } })
+    await recordProfileDeparture({ commandId: uuidv7(), correlationId: uuidv7(), subjectId: me, groupId: left, endedAt: new Date().toISOString() })
     const before = await call('GET', '/api/profile/me/departures', { as: me })
     expect(before).toMatchObject({ status: 200, data: { departures: [{ groupId: left, anonymised: false }] } })
     expect(before.headers.get('cache-control')).toBe('no-store')
@@ -275,7 +285,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
     expect((await call('GET', '/api/profile/me/departures', { as: await person() })).data.departures).toEqual([])
   })
 
-  it('answers an access request from every member, as an archive only the person can download, after a recent sign-in', async () => {
+  it('answers an access request from every coordinated part, as an archive only the person can download, after a recent sign-in', async () => {
     const me = await person()
     await call('PATCH', '/api/profile/me', { as: me, body: { expectedVersion: 1, changes: { name: 'Ada Lovelace' } } })
     expect(await call('POST', '/api/profile/me/requests', { as: me, ageSeconds: 20 * 60, body: { type: 'access' } })).toMatchObject({ status: 403, data: { code: 'insufficient-assurance' } })
@@ -283,23 +293,23 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
 
     const opened = await call('POST', '/api/profile/me/requests', { as: me, body: { type: 'access' } })
     expect(opened).toMatchObject({ status: 201, data: { type: 'access', origin: 'person', status: 'completed' } })
-    expect(opened.data.parts.map((part: { part: string, status: string }) => `${part.part}:${part.status}`)).toEqual(['profile:done', 'identity:done', 'authentication:done', 'authorisation:done', 'configuration:done'])
+    expect(opened.data.parts.map((part: { part: string, status: string }) => `${part.part}:${part.status}`)).toEqual(['profile:done', 'directory:done', 'sign-in:done', 'permissions:done', 'settings:done'])
     const { requestId } = opened.data
 
     const archive = await call('GET', `/api/profile/me/requests/${requestId}/archive`, { as: me })
-    expect(archive).toMatchObject({ status: 200, data: { requestId, subjectId: me, parts: { profile: { attributes: { name: 'Ada Lovelace' } }, identity: { member: 'identity', identityId: me }, authorisation: null, configuration: { member: 'configuration', identityId: me } } } })
+    expect(archive).toMatchObject({ status: 200, data: { requestId, subjectId: me, parts: { profile: { attributes: { name: 'Ada Lovelace' } }, directory: { part: 'directory', identityId: me }, permissions: null, settings: { part: 'settings', identityId: me } } } })
     expect(archive.headers.get('cache-control')).toBe('no-store')
     expect(await call('GET', `/api/profile/me/requests/${requestId}/archive`, { as: me, ageSeconds: 20 * 60 })).toMatchObject({ status: 403, data: { code: 'insufficient-assurance' } })
     expect(await call('GET', `/api/profile/me/requests/${requestId}/archive`, { as: await person() })).toMatchObject({ status: 403, data: { code: 'forbidden' } })
     expect((await call('GET', '/api/profile/me/requests', { as: me })).data.requests).toEqual([expect.objectContaining({ requestId, archiveUntil: expect.any(String) })])
   })
 
-  it('keeps an access request open while a member fails, never completing it partially', async () => {
+  it('keeps an access request open while a coordinated part fails, never completing it partially', async () => {
     const me = await person()
-    authenticationDown = true
+    signInDown = true
     const opened = await call('POST', '/api/profile/me/requests', { as: me, body: { type: 'access' } })
     expect(opened.data).toMatchObject({ status: 'open', archiveUntil: null })
-    expect(opened.data.parts.find((part: { part: string }) => part.part === 'authentication').status).toBe('pending')
+    expect(opened.data.parts.find((part: { part: string }) => part.part === 'sign-in').status).toBe('pending')
     expect(await call('GET', `/api/profile/me/requests/${opened.data.requestId}/archive`, { as: me })).toMatchObject({ status: 403 })
   })
 
@@ -392,7 +402,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
       let offset = 0
       provideProfileClock({ now: () => new Date(Date.now() + offset) })
       const me = await person()
-      const hold = await placeProfileLegalHold({ identityId: me, parts: ['authorisation'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 60 * MINUTE).toISOString(), correlationId: uuidv7() })
+      const hold = await placeProfileLegalHold({ identityId: me, parts: ['permissions'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 60 * MINUTE).toISOString(), correlationId: uuidv7() })
       await call('PATCH', '/api/profile/me', { as: me, body: { expectedVersion: 1, changes: { email: 'ada@example.com' } } })
       expect(await call('POST', '/api/profile/me/verification/email/send', { as: me })).toMatchObject({ status: 200, data: { status: 'sent' } })
       const code = sent.at(-1)!.code
@@ -402,7 +412,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
       expect(await call('POST', '/api/profile/me/verification/email/confirm', { as: me, body: { code } })).toMatchObject({ status: 409, data: { reason: 'code-expired' } })
       offset = 16 * MINUTE
       expect(await call('GET', '/api/profile/me/export', { as: me })).toMatchObject({ status: 403, data: { code: 'insufficient-assurance' } })
-      expect(await profileLegalHoldParts(me)).toEqual(['authorisation'])
+      expect(await profileLegalHoldParts(me)).toEqual(['permissions'])
 
       // Past the hold's end by the clock: maintenance ends it, and the times written are the clock's.
       offset = 61 * MINUTE

@@ -6,7 +6,7 @@
   "provides": [
     {
       "capability": "Profile",
-      "contractVersion": "1"
+      "contractVersion": "2"
     }
   ],
   "requires": [
@@ -14,7 +14,7 @@
       "capability": "Identity",
       "contractVersion": "1",
       "optional": false,
-      "purpose": "the identifiers records are keyed by, its lifecycle events, and the disclosure-context port, adapted by the host; there is no package dependency"
+      "purpose": "a directory behind the identifiers records are keyed by, the disclosure-context port and Profile's commands, adapted by the host in Profile's own terms; there is no package dependency"
     },
     {
       "capability": "Authentication",

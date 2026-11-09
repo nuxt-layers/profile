@@ -130,7 +130,53 @@ describe('Attributes', () => {
     expect(contracts.profileEventSchema.safeParse({ ...ids, type: 'profile.request-escalated', data: { requestId, identityId, reasonCode: 'Ada asked twice' } }).success).toBe(false)
     expect(contracts.profileEventSchema.safeParse({ ...ids, type: 'profile.legal-hold-ended', data: { holdId: requestId, identityId, parts: ['profile'], released: ['profile'], identityClosed: true, reasonCode: 'expired' } }).success).toBe(true)
     expect(contracts.profileEventSchema.safeParse({ ...ids, type: 'profile.contact-verified', data: { identityId, attribute: 'email', value: 'ada@example.com' } }).success).toBe(false)
-    expect(contracts.IDENTITY_EVENTS_HANDLED).toEqual(['identity.provisioned', 'membership.ended', 'identity.closed', 'identity.paused', 'group.renamed', 'group.deleted', 'group.disposal-due'])
+    // Parts are the host's names: any part name in the code grammar, never free text.
+    expect(contracts.profileEventSchema.safeParse({ ...ids, type: 'profile.request-opened', data: { requestId, identityId, type: 'erasure', origin: 'operator', parts: ['profile', 'sign-in'], dueAt: at } }).success).toBe(true)
+    expect(contracts.profileEventSchema.safeParse({ ...ids, type: 'profile.request-opened', data: { requestId, identityId, type: 'erasure', origin: 'operator', parts: ['Sign in'], dueAt: at } }).success).toBe(false)
+  })
+
+  it('knows its own part only; the host declares the others, checked at composition', () => {
+    expect(contracts.PROFILE_REQUEST_PART).toBe('profile')
+    const alone = contracts.resolveProfileRequestParts()
+    expect(alone).toEqual({ all: ['profile'], coordinated: [], holdable: ['profile'], directory: null, defaults: { access: ['profile'], correction: ['profile'], erasure: ['profile'], restriction: ['profile'] } })
+    const declared = contracts.resolveProfileRequestParts({
+      parts: [{ name: 'directory', coordinated: true, directory: true }, { name: 'sign-in', coordinated: true, holdable: true }, { name: 'settings' }],
+      defaults: { erasure: ['sign-in', 'directory'] },
+    })
+    expect(declared).toEqual({
+      all: ['profile', 'directory', 'sign-in', 'settings'],
+      coordinated: ['directory', 'sign-in'],
+      holdable: ['profile', 'sign-in'],
+      directory: 'directory',
+      defaults: { access: ['profile', 'directory', 'sign-in'], correction: ['profile'], erasure: ['profile', 'directory', 'sign-in'], restriction: ['profile'] },
+    })
+    for (const bad of [
+      { parts: [{ name: 'profile' }] },
+      { parts: [{ name: 'Sign In' }] },
+      { parts: [{ name: 'a' }, { name: 'a' }] },
+      { parts: [{ name: 'a', directory: true }, { name: 'b', directory: true }] },
+      { parts: [{ name: 'a' }], defaults: { access: ['b'] } },
+      { parts: [{ name: 'a', kind: 'x' }] },
+      { parts: Array.from({ length: 16 }, (_, i) => ({ name: `p${i}` })) },
+    ]) expect(() => contracts.resolveProfileRequestParts(bad as never), JSON.stringify(bad)).toThrow(TypeError)
+  })
+
+  it('takes the host\'s directory changes as its own strict, idempotent commands', () => {
+    const command = { commandId: '01928c4e-0000-7000-8000-000000000001', correlationId: '01928c4e-0000-7000-8000-0000000000aa' }
+    const subjectId = '01928c4e-0000-7000-8000-000000000002'
+    expect(contracts.provisionCommandSchema.safeParse({ ...command, subjectId }).success).toBe(true)
+    expect(contracts.provisionCommandSchema.safeParse({ ...command, subjectId, kind: 'person' }).success).toBe(false)
+    expect(contracts.provisionCommandSchema.safeParse({ subjectId, correlationId: command.correlationId }).success).toBe(false)
+    expect(contracts.departureCommandSchema.safeParse({ ...command, subjectId, groupId: subjectId, endedAt: '2026-10-09T12:00:00.000Z' }).success).toBe(true)
+    expect(contracts.groupRenamedCommandSchema.safeParse({ ...command, groupId: 'not-an-id' }).success).toBe(false)
+  })
+
+  it('names no other capability in its exports or in its ports\' and subject\'s types', () => {
+    for (const name of Object.keys(contracts)) expect(name, name).not.toMatch(/identity|authenticat|authoris|integration/i)
+    const restated = ['shared/ports.ts', 'shared/disclosure.ts', 'shared/api.ts', 'shared/permissions.ts', 'shared/requests.ts', 'shared/events.ts', 'shared/commands.ts', 'shared/identifiers.ts', 'shared/errors.ts']
+    for (const file of restated) {
+      expect(readFileSync(join(root, file), 'utf8'), file).not.toMatch(/\bIdentity\b|Identity's|\bAuthentication\b|\bAuthorisation\b|iam-integration|configuration layer/)
+    }
   })
 
   it('dates a request a calendar month on, or to the month\'s last day', () => {

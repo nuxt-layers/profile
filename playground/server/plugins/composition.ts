@@ -2,7 +2,7 @@
  * Playground composition root: supplies Profile's ports the way a host
  * would. The key wrapper uses a fixed development master key and the
  * disclosure context is a fixture: stand-ins for the host's KMS and for
- * Identity's port. Neither is fit for production.
+ * its directory. Neither is fit for production.
  *
  * By default it composes nothing, so every operation fails closed: the
  * playground only proves the layer builds in a host.
@@ -10,9 +10,9 @@
  * With PROFILE_PLAYGROUND_TEST=1 (browser tests only), it migrates and uses
  * a disposable database, takes the signed-in identity from the
  * `profile_playground_principal` cookie (and, if set, the sign-in time from
- * `profile_playground_signed_in_at`), standing in for Authentication, and
- * answers relationships the seed endpoint records. The other members' parts
- * of an access request and the notifier are stand-ins too: the notifier
+ * `profile_playground_signed_in_at`), standing in for the host's sign-in, and
+ * answers relationships the seed endpoint records. The host's parts of an
+ * access request and the notifier are stand-ins too: the notifier
  * keeps the last code for the tests, never delivering it.
  * - PROFILE_MIGRATION_DATABASE_URL  the migration role's connection
  * - PROFILE_DATABASE_URL            the runtime role's connection
@@ -56,7 +56,7 @@ export default defineNitroPlugin(() => {
       current: 'dev-1',
     }),
 
-    // A host adapts Authentication's getAuthenticatedPrincipal(event) here.
+    // A host adapts its own sign-in here.
     subjectResolver: {
       async resolve(event) {
         const principalId = getCookie(event as H3Event, 'profile_playground_principal')
@@ -87,16 +87,25 @@ export default defineNitroPlugin(() => {
       },
     },
 
-    // A host composes iam-integration's profileRequestCoordinatorFromMembers
-    // over Identity, Authentication and Authorisation here; the stand-in
-    // answers for each with an empty bundle.
+    // The host's parts of data-subject requests beside Profile's own, in the
+    // host's own names. `directory` is worded in app.config.ts; `settings`
+    // shows Profile's general wording.
+    requestParts: {
+      parts: [
+        { name: 'directory', coordinated: true, directory: true },
+        { name: 'settings', coordinated: true },
+      ],
+    },
+
+    // A host answers each coordinated part from wherever it keeps it; the
+    // stand-in answers with an empty bundle.
     requestCoordinator: {
       async exportPart({ identityId, part }) {
-        return { member: part, identityId, note: 'playground stand-in' }
+        return { part, identityId, note: 'playground stand-in' }
       },
     },
 
-    // A host composes iam-integration's profileAccessDecisionFromAuthorisation here.
+    // A host adapts its access decision here.
     accessDecision: { async allows() { return false } },
 
     // A host delivers the code by email or SMS here. The playground never

@@ -12,6 +12,13 @@ import type { RequestView } from '../../contracts'
 const profile = useProfile()
 const action = useProfileAction()
 const { t, locale } = useProfileText()
+
+/** A part's name: the host's wording for a part it declared, or the general fallback. */
+function partName(part: string): string {
+  const key = `profile.requests.part.${part}`
+  const named = t(key)
+  return named === key ? t('profile.requests.part.other') : named
+}
 const routes = useProfileRoutes()
 const notice = ref<string | null>(null)
 
@@ -90,7 +97,7 @@ async function download(request: RequestView) {
             <dt :class="profileClasses.term">{{ t('profile.requests.dueAt') }}</dt>
             <dd :class="profileClasses.definition">{{ dateOf(request.dueAt) }}</dd>
             <template v-for="part in request.parts" :key="part.part">
-              <dt :class="profileClasses.term">{{ t(`profile.requests.part.${part.part}`) }}</dt>
+              <dt :class="profileClasses.term">{{ partName(part.part) }}</dt>
               <dd :class="profileClasses.definition">{{ t(`profile.requests.partStatus.${part.status}`) }}</dd>
             </template>
           </dl>

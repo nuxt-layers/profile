@@ -6,10 +6,11 @@ import { identifierSchema, instantSchema } from './identifiers'
 /**
  * Disclosure (docs/contracts.md §4, §5): what a viewer may see of a person.
  *
- * The person chooses, for each attribute, its audience. Identity supplies
- * how the viewer is related to the person and the person's standing, through
- * the disclosure-context port; Profile applies its rules here, as a pure
- * function, so the same answer comes from every server function.
+ * The person chooses, for each attribute, its audience. The host's directory
+ * supplies how the viewer is related to the person and the person's
+ * standing, through the disclosure-context port; Profile applies its rules
+ * here, as a pure function, so the same answer comes from every server
+ * function.
  */
 
 /**
@@ -53,19 +54,35 @@ export const DEFAULT_DISCLOSURE_SETTINGS: DisclosureSettings = Object.freeze({
 }) as DisclosureSettings
 
 // ---------------------------------------------------------------------------
-// Identity's disclosure context, as Profile reads it (structural: no import)
+// The disclosure context: what Profile asks the host's directory
 // ---------------------------------------------------------------------------
 
+/**
+ * How the viewer is related to a person:
+ *
+ * - `self` — the viewer is the person;
+ * - `same-group` — they share a group (or the group context), both
+ *   memberships in effect;
+ * - `former-member` — the person left the group context;
+ * - `same-tenant` — they share only a tenant;
+ * - `none` — anything else, including a person who does not exist.
+ */
 export const RELATIONSHIPS = ['self', 'same-group', 'former-member', 'same-tenant', 'none'] as const
 export type Relationship = typeof RELATIONSHIPS[number]
 
+/**
+ * The person's standing as a whole: `visible`; `paused` (by their own
+ * choice: shown only in attribution); `suspended` (by others); `closing`
+ * (account closure under way); `gone` (closed). Only `visible` is listed.
+ */
 export const SUBJECT_STANDINGS = ['visible', 'paused', 'suspended', 'closing', 'gone'] as const
 export type SubjectStanding = typeof SUBJECT_STANDINGS[number]
 
+/** How a group shows the people who left it: by name, by pseudonym, or as "Former member". */
 export const DEPARTURE_ATTRIBUTIONS = ['keep-name', 'pseudonymise', 'anonymise'] as const
 export type DepartureAttribution = typeof DEPARTURE_ATTRIBUTIONS[number]
 
-/** A membership's own state, as Identity records it. */
+/** A membership's own state: only `active` is in effect; `paused` is the member's choice, `suspended` others'. */
 export const MEMBERSHIP_STATES = ['active', 'paused', 'suspended', 'ended'] as const
 export type MembershipState = typeof MEMBERSHIP_STATES[number]
 
@@ -73,7 +90,7 @@ export type MembershipState = typeof MEMBERSHIP_STATES[number]
  * The subject's standing in the group context: their identity's standing,
  * made stricter by their own membership of the group. A member paused or
  * suspended in a group is hidden there as a paused or suspended person is
- * everywhere (iam-integration's pausing and suspension process).
+ * everywhere.
  */
 export function standingInGroup(standing: SubjectStanding, membership: MembershipState | null | undefined): SubjectStanding {
   if (standing !== 'visible' && standing !== 'paused') return standing
@@ -82,11 +99,11 @@ export function standingInGroup(standing: SubjectStanding, membership: Membershi
   return standing
 }
 
-/** Identity's maximum batch: one viewer, up to 200 subjects. */
+/** The largest batch Profile asks about: one viewer, up to 200 subjects. */
 export const DISCLOSURE_MAX_SUBJECTS = 200
 
 /**
- * Identity's answer, parsed before use so a malformed one fails closed.
+ * The directory's answer, parsed before use so a malformed one fails closed.
  * Fields Profile does not use are tolerated and dropped.
  */
 export const disclosureContextSchema = z.object({
@@ -156,7 +173,7 @@ export interface DisclosureInput {
   departure: DepartureFacts | null
   /**
    * For `administration` only: the viewer holds `profile.suspended-people:view`
-   * on the group context, as Authorisation decided for this lookup.
+   * on the group context, as the host's access decision answered for this lookup.
    */
   administrator?: boolean
 }

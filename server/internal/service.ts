@@ -1,10 +1,8 @@
 import type {
-  CoordinatedPart,
   DepartureFacts,
   DisclosureContext,
   DisclosureSettings,
   DisplayName,
-  IdentityEventLike,
   LookupPurpose,
   PostgresPoolLike,
   ProfileAttribute,
@@ -14,14 +12,15 @@ import type {
   ProfileEventPublisher,
   ProfileEventType,
   ProfileKeyWrapper,
-  LegalHoldPart,
   LegalHoldView,
   PartStatus,
   ProfileAccessDecision,
   ProfileDepartureView,
   ProfileNotifier,
   ProfileOwnView,
+  ProfileCommandResult,
   ProfileRequestCoordinator,
+  ProfileRequestParts,
   RequestPart,
   RequestView,
   VerifiableAttribute,
@@ -29,13 +28,19 @@ import type {
 } from '../../contracts'
 import {
   chosenDisplayName,
-  DEFAULT_REQUEST_PARTS,
-  LEGAL_HOLD_PARTS,
+  closureCommandSchema,
+  departureCommandSchema,
+  groupDisposalCommandSchema,
+  groupRenamedCommandSchema,
   openRequestSchema,
+  orderRequestParts,
+  pauseCommandSchema,
+  PROFILE_REQUEST_PART,
+  provisionCommandSchema,
+  resolveProfileRequestParts,
   PERSON_REQUEST_TYPES,
   placeHoldSchema,
   PROFILE_REQUEST_POLICY,
-  REQUEST_PARTS,
   PROFILE_SUSPENDED_PEOPLE_PERMISSION,
   PROFILE_VERIFICATION_POLICY,
   profileSubjectSchema,
@@ -59,7 +64,6 @@ import {
   profileAttributesSchema,
   profileChangesSchema,
   ProfileFailure,
-  IDENTITY_EVENTS_HANDLED,
   resolveProfileRetention,
   reasonCodeSchema,
   VERIFICATION_CLAIMS,
@@ -73,7 +77,7 @@ import { aad, codeDigest, newCode, newDataKey, open, sameDigest, seal, uuidv7 } 
  * PRIVATE. Profile's server operations. Every attribute value is encrypted
  * with the person's own key before it reaches the database, and decrypted
  * only to answer the person or a viewer the disclosure rules allow. Any
- * failure of the database, the key port or Identity's port fails closed
+ * failure of the database, the key port or the disclosure-context port fails closed
  * (`ProfileFailure('unavailable')`), and no error or log carries a value.
  */
 
@@ -81,18 +85,20 @@ export interface ServiceDependencies {
   pool: PostgresPoolLike
   schema: string
   keys: ProfileKeyWrapper
-  /** Identity's disclosure-context port; required for lookups by other people. */
+  /** The host's disclosure-context port; required for lookups by other people. */
   disclosure: () => ProfileDisclosureContextPort
   /** The host's coordination port; required for data-subject requests. */
   coordinator?: () => ProfileRequestCoordinator
-  /** Authorisation's decisions through the host; required for administration lookups that meet a suspended member. */
+  /** The host's access decisions; required for administration lookups that meet a suspended member. */
   accessDecision?: () => ProfileAccessDecision
   /** The host's notification port; required for contact-detail verification. */
   notifier?: () => ProfileNotifier
   /** The host's clock (or the system clock); every time Profile keeps or judges comes from it. */
   now?: () => Date
-  /** The retention periods (iam-integration retention); the defaults without them. */
+  /** The retention periods; the defaults without them. */
   retention?: () => ProfileRetention
+  /** The host's request parts beside Profile's own; Profile's only without them. */
+  requestParts?: () => ProfileRequestParts
 }
 
 /** A port the host has not supplied fails closed. */
@@ -132,7 +138,7 @@ function parse<T>(run: () => T): T {
   }
 }
 
-export function createService({ pool, schema, keys, disclosure, coordinator = () => missing('ProfileRequestCoordinator'), accessDecision = () => missing('ProfileAccessDecision'), notifier = () => missing('ProfileNotifier'), now: clockNow = () => new Date(), retention = () => resolveProfileRetention() }: ServiceDependencies) {
+export function createService({ pool, schema, keys, disclosure, coordinator = () => missing('ProfileRequestCoordinator'), accessDecision = () => missing('ProfileAccessDecision'), notifier = () => missing('ProfileNotifier'), now: clockNow = () => new Date(), retention = () => resolveProfileRetention(), requestParts = () => resolveProfileRequestParts() }: ServiceDependencies) {
   const s = quoteSchema(schema)
   /** The clock's time; an invalid answer fails closed as `unavailable`. */
   const clock = { now: clockNow }
@@ -347,7 +353,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       const subject = facts.get(id)
       return Boolean(subject && subject.relationship === 'same-group' && subject.standing === 'suspended')
     }
-    // Authorisation is asked once, and only when the answer could name someone.
+    // The access decision is asked once, and only when the answer could name someone.
     let administrator = false
     if (viewer && context.groupId === groupId && subjectIds.some(suspendedHere)) {
       try {
@@ -462,9 +468,8 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       values,
     ) as { rows: Record<string, unknown>[] }
     return rows.map((row) => {
-      const parts = (row.parts as { part: RequestPart, status: PartStatus, reasonCode: string | null, updatedAt: string }[])
-        .map(part => ({ part: part.part, status: part.status, reasonCode: part.reasonCode, updatedAt: iso(part.updatedAt) }))
-        .sort((a, b) => REQUEST_PARTS.indexOf(a.part) - REQUEST_PARTS.indexOf(b.part))
+      const parts = orderRequestParts(requestParts(), (row.parts as { part: RequestPart, status: PartStatus, reasonCode: string | null, updatedAt: string }[])
+        .map(part => ({ part: part.part, status: part.status, reasonCode: part.reasonCode, updatedAt: iso(part.updatedAt) })), part => part.part)
       const completedAt = isoOrNull(row.completed_at)
       const archiveUntil = row.type === 'access' && completedAt && row.archive_deleted_at == null
         ? new Date(Date.parse(completedAt) + PROFILE_REQUEST_POLICY.archiveDays * DAY_MS).toISOString()
@@ -488,17 +493,16 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   }
 
   /** The parts of a person's data under legal hold now. */
-  async function heldParts(client: Client | PostgresPoolLike, identityId: string): Promise<Set<LegalHoldPart>> {
+  async function heldParts(client: Client | PostgresPoolLike, identityId: string): Promise<Set<RequestPart>> {
     const { rows } = await client.query(
       `select distinct unnest("parts") as "part" from ${s}."legal_hold" where "identity_id" = $1 and "ended_at" is null and "ends_at" > $2`,
       [identityId, now().toISOString()],
-    ) as { rows: { part: LegalHoldPart }[] }
+    ) as { rows: { part: RequestPart }[] }
     return new Set(rows.map(row => row.part))
   }
 
   /**
-   * Profile's part of a group Identity deleted (iam-integration group
-   * deletion): its departure records and pseudonyms, except those of people
+   * Profile's part of a disposed group (`disposeProfileGroup`): its departure records and pseudonyms, except those of people
    * a legal hold on Profile's part covers, and its references in
    * data-subject requests, which a deleted group's name no longer needs
    * (the correction is done). Announced as `profile.group-disposed`.
@@ -511,7 +515,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
        returning r."identity_id"`,
       [groupId, at],
     )
-    for (const person of new Set(renamed.map(row => row.identity_id as string))) await settleIdentityParts(client, person)
+    for (const person of new Set(renamed.map(row => row.identity_id as string))) await settleDirectoryParts(client, person)
     await client.query(`delete from ${s}."request_group" g using ${s}."request" r where r."request_id" = g."request_id" and g."group_id" = $1 and r."status" = 'completed'`, [groupId])
     const held = `exists (select 1 from ${s}."legal_hold" h where h."identity_id" = d."identity_id" and h."ended_at" is null and h."ends_at" > $2 and 'profile' = any (h."parts"))`
     const { rows: gone } = await client.query(`delete from ${s}."departure" d where d."group_id" = $1 and not ${held} returning 1`, [groupId, at])
@@ -521,7 +525,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   }
 
   /**
-   * Retention (iam-integration retention): delivered events, completed
+   * Retention: delivered events, completed
    * requests (with their parts and group references) and ended legal holds
    * past their periods. A completed request of a person an active hold
    * covers is kept. Announced only when something was deleted, with counts.
@@ -555,9 +559,8 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     if (rows.length === 0 || rows[0]!.request_status !== 'open') return
     if (rows.some(row => row.status === 'pending' || row.status === 'held')) return
     await client.query(`update ${s}."request" set "status" = 'completed', "completed_at" = $2 where "request_id" = $1`, [requestId, now().toISOString()])
-    const parts = rows
-      .map(row => ({ part: row.part as RequestPart, status: row.status as PartStatus, reasonCode: (row.reason_code as string | null) ?? null }))
-      .sort((a, b) => REQUEST_PARTS.indexOf(a.part) - REQUEST_PARTS.indexOf(b.part))
+    const parts = orderRequestParts(requestParts(), rows
+      .map(row => ({ part: row.part as RequestPart, status: row.status as PartStatus, reasonCode: (row.reason_code as string | null) ?? null })), part => part.part)
     await emit(client, event('profile.request-completed', { requestId, identityId: rows[0]!.identity_id as string, parts }, rows[0]!.correlation_id as string))
   }
 
@@ -575,31 +578,34 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   }
 
   /**
-   * Identity's part of a person's open correction and erasure requests is
-   * done once every group they name is renamed, and, for erasure, once the
-   * identity has closed.
+   * The directory part of a person's open correction and erasure requests
+   * is done once every group they name is renamed, and, for erasure, once
+   * the person's account is closed. Nothing without a directory part.
    */
-  async function settleIdentityParts(client: Client, identityId: string): Promise<void> {
+  async function settleDirectoryParts(client: Client, identityId: string): Promise<void> {
+    const directory = requestParts().directory
+    if (!directory) return
     const closed = await isClosed(client, identityId)
     const { rows } = await client.query(
       `select r."request_id" from ${s}."request" r join ${s}."request_part" p using ("request_id")
-       where r."identity_id" = $1 and r."status" = 'open' and p."part" = 'identity' and p."status" = 'pending'
+       where r."identity_id" = $1 and r."status" = 'open' and p."part" = $3 and p."status" = 'pending'
          and (r."type" = 'correction' or (r."type" = 'erasure' and $2::boolean))
          and not exists (select 1 from ${s}."request_group" g where g."request_id" = r."request_id" and g."renamed_at" is null)`,
-      [identityId, closed],
+      [identityId, closed, directory],
     )
     for (const row of rows) {
-      await client.query(`update ${s}."request_part" set "status" = 'done', "updated_at" = $2 where "request_id" = $1 and "part" = 'identity'`, [row.request_id, now().toISOString()])
+      await client.query(`update ${s}."request_part" set "status" = 'done', "updated_at" = $2 where "request_id" = $1 and "part" = $3`, [row.request_id, now().toISOString(), directory])
       await checkCompletion(client, row.request_id as string)
     }
   }
 
   /**
-   * Identity closed the identity: Profile erases the record, unless a legal
-   * hold covers Profile's part, when it keeps it, read by nobody, until the
-   * hold ends. Parts of open erasure requests follow.
+   * The person's account is closed (`closeProfileSubject`): Profile erases
+   * the record, unless a legal hold covers Profile's part, when it keeps it,
+   * read by nobody, until the hold ends. Parts of open erasure requests
+   * follow: each other holdable part a hold covers waits as `held`.
    */
-  async function closeIdentity(client: Client, identityId: string, correlationId: string): Promise<void> {
+  async function closeSubject(client: Client, identityId: string, correlationId: string): Promise<void> {
     await client.query(`insert into ${s}."closed_identity" ("identity_id", "closed_at") values ($1, $2) on conflict do nothing`, [identityId, now().toISOString()])
     const held = await heldParts(client, identityId)
     if (held.has('profile')) {
@@ -613,10 +619,9 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       await erase(client, identityId, 'identity-closed', correlationId)
       await setParts(client, identityId, 'erasure', ['profile'], 'done')
     }
-    for (const part of ['authentication', 'authorisation'] as const) {
-      if (held.has(part)) await setParts(client, identityId, 'erasure', [part], 'held', ['pending'])
-    }
-    await settleIdentityParts(client, identityId)
+    const others = [...held].filter(part => part !== PROFILE_REQUEST_PART)
+    if (others.length > 0) await setParts(client, identityId, 'erasure', others, 'held', ['pending'])
+    await settleDirectoryParts(client, identityId)
   }
 
   /**
@@ -632,7 +637,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     const hold = ended.rows[0]
     if (!hold) return false
     const identityId = hold.identity_id as string
-    const parts = hold.parts as LegalHoldPart[]
+    const parts = hold.parts as RequestPart[]
     const remaining = await heldParts(client, identityId)
     const released = parts.filter(part => !remaining.has(part))
     const closed = await isClosed(client, identityId)
@@ -641,14 +646,14 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       if (kept.rows.length > 0) await erase(client, identityId, 'identity-closed', correlationId)
       await setParts(client, identityId, 'erasure', ['profile'], 'done')
     }
-    // The other members' parts wait again for the host's handler to report them done.
+    // The host's parts wait again for the host to report them done.
     const others = released.filter(part => part !== 'profile')
     if (others.length > 0) await setParts(client, identityId, 'erasure', others, 'pending', ['held'])
     await emit(client, event('profile.legal-hold-ended', {
       holdId,
       identityId,
-      parts: LEGAL_HOLD_PARTS.filter(part => parts.includes(part)),
-      released: LEGAL_HOLD_PARTS.filter(part => released.includes(part)),
+      parts: orderRequestParts(requestParts(), parts, part => part),
+      released: orderRequestParts(requestParts(), released, part => part),
       identityClosed: closed,
       reasonCode,
     }, correlationId))
@@ -683,9 +688,10 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
 
   /**
    * Answers the pending parts of an open access request: Profile's own, and
-   * each other member's through the coordination port, one at a time. Each
-   * bundle is sealed with the person's key. A part whose member fails stays
-   * pending, for maintenance to retry; nothing partial is ever complete.
+   * each coordinated part through the coordination port, one at a time. Each
+   * bundle is sealed with the person's key. A part whose answer fails stays
+   * pending, for maintenance to retry; a part neither Profile's nor
+   * coordinated waits for an operator. Nothing partial is ever complete.
    */
   async function fulfilAccess(requestId: string): Promise<void> {
     const { rows } = await poolRead(() => pool.query(
@@ -693,13 +699,15 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
        where r."request_id" = $1 and r."type" = 'access' and r."status" = 'open' and p."status" = 'pending' order by p."part"`,
       [requestId],
     ) as Promise<{ rows: { identity_id: string, correlation_id: string, part: RequestPart }[] }>)
+    const coordinated = requestParts().coordinated
     for (const row of rows) {
       const identityId = row.identity_id
+      if (row.part !== PROFILE_REQUEST_PART && !coordinated.includes(row.part)) continue
       let bundle: unknown
       try {
-        bundle = row.part === 'profile'
+        bundle = row.part === PROFILE_REQUEST_PART
           ? await profileBundle(identityId)
-          : await coordinator().exportPart({ identityId, part: row.part as CoordinatedPart, correlationId: row.correlation_id })
+          : await coordinator().exportPart({ identityId, part: row.part, correlationId: row.correlation_id })
       }
       catch {
         continue
@@ -720,7 +728,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   const holdView = (row: Record<string, unknown>): LegalHoldView => ({
     holdId: row.hold_id as string,
     identityId: row.identity_id as string,
-    parts: LEGAL_HOLD_PARTS.filter(part => (row.parts as string[]).includes(part)),
+    parts: orderRequestParts(requestParts(), row.parts as string[], part => part),
     reasonCode: row.reason_code as string,
     placedAt: iso(row.placed_at),
     endsAt: iso(row.ends_at),
@@ -730,6 +738,16 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
   const verifiableOf = (value: unknown): VerifiableAttribute => {
     if (typeof value !== 'string' || !(VERIFIABLE_ATTRIBUTES as readonly string[]).includes(value)) throw new ProfileFailure('validation-failed', 'invalid-attribute')
     return value as VerifiableAttribute
+  }
+
+  /** Runs a command once: records its id and applies it in one transaction; `duplicate` if the id was already applied. */
+  async function once(command: { commandId: string }, run: (client: Client) => Promise<void>): Promise<ProfileCommandResult> {
+    return transaction(async (client) => {
+      const fresh = await client.query(`insert into ${s}."processed_event" ("event_id", "processed_at") values ($1, $2) on conflict do nothing returning 1`, [command.commandId, now().toISOString()])
+      if (fresh.rows.length === 0) return 'duplicate'
+      await run(client)
+      return 'applied'
+    })
   }
 
   return {
@@ -867,61 +885,57 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       }
     },
 
-    /**
-     * Applies one Identity event (iam-integration architecture §4):
-     * `identity.provisioned` creates the empty record and key for a person,
-     * `membership.ended` keeps how the leaver is shown in the group,
-     * `identity.closed` erases the record (unless a legal hold covers it),
-     * and `identity.paused` and `group.renamed` complete parts of
-     * data-subject requests. Idempotent by event id; other types are ignored.
-     */
-    async applyIdentityEvent(identityEvent: IdentityEventLike): Promise<'applied' | 'duplicate' | 'ignored'> {
-      const type = identityEvent?.type
-      if (typeof type !== 'string' || !(IDENTITY_EVENTS_HANDLED as readonly string[]).includes(type)) return 'ignored'
-      const eventId = parse(() => identifierSchema.parse(identityEvent.eventId))
-      const correlationId = parse(() => correlationIdSchema.parse(identityEvent.correlationId))
-      const data = identityEvent.data ?? {}
-      const groupEvent = type === 'group.renamed' || type === 'group.deleted' || type === 'group.disposal-due'
-      // A deleted group's disposal waits while a hold defers it: `group.disposal-due` follows.
-      if (type === 'group.deleted' && data.disposal !== 'due') return 'ignored'
-      const identityId = groupEvent ? null : parse(() => identifierSchema.parse(data.identityId))
-      const groupId = groupEvent || type === 'membership.ended' ? parse(() => identifierSchema.parse(data.groupId)) : null
-      return transaction(async (client) => {
-        const fresh = await client.query(`insert into ${s}."processed_event" ("event_id", "processed_at") values ($1, $2) on conflict do nothing returning 1`, [eventId, now().toISOString()])
-        if (fresh.rows.length === 0) return 'duplicate'
-        switch (type) {
-          case 'identity.provisioned':
-            // Profile describes people: service and break-glass identities have no record.
-            if (data.kind === 'person') await ensureRecord(client, identityId!, correlationId)
-            break
-          case 'membership.ended': {
-            const endedAt = parse(() => new Date(identityEvent.occurredAt).toISOString())
-            await snapshotDeparture(client, identityId!, groupId!, endedAt)
-            break
-          }
-          case 'identity.closed':
-            await closeIdentity(client, identityId!, correlationId)
-            break
-          case 'identity.paused':
-            await setParts(client, identityId!, 'restriction', ['identity'], 'done', ['pending'])
-            break
-          case 'group.renamed': {
-            const { rows } = await client.query(
-              `update ${s}."request_group" g set "renamed_at" = $2 from ${s}."request" r
-               where r."request_id" = g."request_id" and g."group_id" = $1 and g."renamed_at" is null and r."status" = 'open'
-               returning r."identity_id"`,
-              [groupId, now().toISOString()],
-            )
-            for (const person of new Set(rows.map(row => row.identity_id as string))) await settleIdentityParts(client, person)
-            break
-          }
-          case 'group.deleted':
-          case 'group.disposal-due':
-            await disposeGroup(client, groupId!, correlationId)
-            break
-        }
-        return 'applied'
+    // -----------------------------------------------------------------------
+    // Commands from the host (docs/contracts.md §9). Each is idempotent by
+    // `commandId`, recorded in the same transaction as its effect.
+    // -----------------------------------------------------------------------
+
+    /** A person now exists: their empty record and key. Never recreated once erased. */
+    async provisionRecord(input: unknown): Promise<ProfileCommandResult> {
+      const command = parse(() => provisionCommandSchema.parse(input))
+      return once(command, client => ensureRecord(client, command.subjectId, command.correlationId).then(() => {}))
+    },
+
+    /** The person's membership of a group ended: keep how they are shown there. */
+    async recordDeparture(input: unknown): Promise<ProfileCommandResult> {
+      const command = parse(() => departureCommandSchema.parse(input))
+      const endedAt = new Date(command.endedAt).toISOString()
+      return once(command, client => snapshotDeparture(client, command.subjectId, command.groupId, endedAt))
+    },
+
+    /** The person's account is closed: erase the record, unless a legal hold covers Profile's part. */
+    async closeSubject(input: unknown): Promise<ProfileCommandResult> {
+      const command = parse(() => closureCommandSchema.parse(input))
+      return once(command, client => closeSubject(client, command.subjectId, command.correlationId))
+    },
+
+    /** The person paused their account: the directory part of their open restriction requests is done. */
+    async recordPause(input: unknown): Promise<ProfileCommandResult> {
+      const command = parse(() => pauseCommandSchema.parse(input))
+      return once(command, async (client) => {
+        const directory = requestParts().directory
+        if (directory) await setParts(client, command.subjectId, 'restriction', [directory], 'done', ['pending'])
       })
+    },
+
+    /** A group was renamed: requests naming it may now be complete. */
+    async recordGroupRenamed(input: unknown): Promise<ProfileCommandResult> {
+      const command = parse(() => groupRenamedCommandSchema.parse(input))
+      return once(command, async (client) => {
+        const { rows } = await client.query(
+          `update ${s}."request_group" g set "renamed_at" = $2 from ${s}."request" r
+           where r."request_id" = g."request_id" and g."group_id" = $1 and g."renamed_at" is null and r."status" = 'open'
+           returning r."identity_id"`,
+          [command.groupId, now().toISOString()],
+        )
+        for (const person of new Set(rows.map(row => row.identity_id as string))) await settleDirectoryParts(client, person)
+      })
+    },
+
+    /** A deleted group's disposal is due: delete what Profile keeps for it. */
+    async disposeGroup(input: unknown): Promise<ProfileCommandResult> {
+      const command = parse(() => groupDisposalCommandSchema.parse(input))
+      return once(command, client => disposeGroup(client, command.groupId, command.correlationId))
     },
 
     /**
@@ -1017,7 +1031,8 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
      * and starts what can start now. An access request is answered at once
      * as far as the members answer; a restriction sets every audience to
      * `nobody`. The person may open only access and restriction requests;
-     * an operator any type, with a reason code.
+     * an operator any type, with a reason code. Parts are Profile's own
+     * and the host's declared ones; naming groups adds the directory part.
      */
     async openRequest(input: unknown): Promise<RequestView> {
       const request = parse(() => openRequestSchema.parse(input))
@@ -1025,12 +1040,17 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       if (request.origin === 'operator' && !request.reasonCode) throw new ProfileFailure('validation-failed', 'reason-required')
       const groupIds = [...new Set(request.groupIds ?? [])]
       if (groupIds.length > 0 && request.type !== 'correction' && request.type !== 'erasure') throw new ProfileFailure('validation-failed', 'groups-not-allowed')
-      const wanted = new Set<RequestPart>(['profile', ...(request.parts ?? DEFAULT_REQUEST_PARTS[request.type])])
-      if (groupIds.length > 0) wanted.add('identity')
-      if (request.type === 'correction' && wanted.has('identity') && groupIds.length === 0) throw new ProfileFailure('validation-failed', 'groups-required')
-      // An access request needs the other members: refuse it before recording anything if the host has not composed them.
-      if (request.type === 'access') coordinator()
-      const parts = REQUEST_PARTS.filter(part => wanted.has(part))
+      const declared = requestParts()
+      if (request.parts?.some(part => !declared.all.includes(part))) throw new ProfileFailure('validation-failed', 'unknown-part')
+      const wanted = new Set<RequestPart>([PROFILE_REQUEST_PART, ...(request.parts ?? declared.defaults[request.type])])
+      if (groupIds.length > 0) {
+        if (!declared.directory) throw new ProfileFailure('validation-failed', 'groups-not-allowed')
+        wanted.add(declared.directory)
+      }
+      if (request.type === 'correction' && declared.directory && wanted.has(declared.directory) && groupIds.length === 0) throw new ProfileFailure('validation-failed', 'groups-required')
+      const parts = declared.all.filter(part => wanted.has(part))
+      // An access request with coordinated parts needs the coordination port: refuse it before recording anything if the host has not composed it.
+      if (request.type === 'access' && parts.some(part => declared.coordinated.includes(part))) coordinator()
       const opened = now()
       const requestId = uuidv7(opened.getTime())
       const dueAt = requestDueAt(opened).toISOString()
@@ -1055,7 +1075,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
           await emit(client, event('profile.changed', { identityId: request.subjectId, attributes: [], disclosure: true }, request.correlationId))
           await setParts(client, request.subjectId, 'restriction', ['profile'], 'done', ['pending'])
         }
-        if (request.type === 'erasure' && await isClosed(client, request.subjectId)) await settleIdentityParts(client, request.subjectId)
+        if (request.type === 'erasure' && await isClosed(client, request.subjectId)) await settleDirectoryParts(client, request.subjectId)
         await checkCompletion(client, requestId)
       })
       if (request.type === 'access') await fulfilAccess(requestId)
@@ -1093,9 +1113,8 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         [requestId],
       ) as Promise<{ rows: { part: RequestPart, ciphertext: Uint8Array | null }[] }>)
       const parts: Record<string, unknown> = {}
-      for (const part of REQUEST_PARTS) {
-        const row = rows.find(candidate => candidate.part === part)
-        if (!row) continue
+      for (const row of orderRequestParts(requestParts(), rows, candidate => candidate.part)) {
+        const part = row.part
         parts[part] = row.ciphertext ? JSON.parse(openOrFail(record.key, row.ciphertext, aad.requestPart(subjectId, requestId, part))) : null
       }
       return { requestId, subjectId, openedAt: view.openedAt, completedAt: view.completedAt!, parts }
@@ -1120,15 +1139,16 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     },
 
     /**
-     * The host's handler reports another member's erasure done (Authentication's
-     * account deleted, Authorisation's principal erased), for any open erasure
-     * request for the identity.
+     * The host reports its erasure of one of its declared parts done, for
+     * any open erasure request for the person. Not Profile's part, nor the
+     * directory part, which Profile settles from its own commands.
      */
     async recordRequestPart(input: { identityId: unknown, part: unknown, correlationId: unknown }): Promise<void> {
       const identityId = parse(() => identifierSchema.parse(input.identityId))
       parse(() => correlationIdSchema.parse(input.correlationId))
-      if (input.part !== 'authentication' && input.part !== 'authorisation') throw new ProfileFailure('validation-failed', 'invalid-part')
+      const declared = requestParts()
       const part = input.part
+      if (typeof part !== 'string' || part === PROFILE_REQUEST_PART || part === declared.directory || !declared.all.includes(part)) throw new ProfileFailure('validation-failed', 'invalid-part')
       await transaction(client => setParts(client, identityId, 'erasure', [part], 'done'))
     },
 
@@ -1142,8 +1162,10 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       const at = now()
       const endsAt = Date.parse(hold.endsAt)
       if (!(endsAt > at.getTime()) || endsAt > at.getTime() + PROFILE_REQUEST_POLICY.holdMaxDays * DAY_MS) throw new ProfileFailure('validation-failed', 'invalid-end')
+      const holdable = requestParts().holdable
+      if (hold.parts.some(part => !holdable.includes(part))) throw new ProfileFailure('validation-failed', 'invalid-part')
       const holdId = uuidv7(at.getTime())
-      const parts = LEGAL_HOLD_PARTS.filter(part => hold.parts.includes(part))
+      const parts = holdable.filter(part => hold.parts.includes(part))
       const row = await transaction(async (client) => {
         const { rows } = await client.query(
           `insert into ${s}."legal_hold" ("hold_id", "identity_id", "parts", "reason_code", "placed_at", "ends_at") values ($1, $2, $3, $4, $5, $6) returning *`,
@@ -1164,11 +1186,11 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       if (!ended) throw new ProfileFailure('conflict', 'not-active')
     },
 
-    /** The parts of a person's data under legal hold now, for the host's closure handler. */
-    async heldParts(input: { identityId: unknown }): Promise<LegalHoldPart[]> {
+    /** The parts of a person's data under legal hold now, for the host's closure handling. */
+    async heldParts(input: { identityId: unknown }): Promise<RequestPart[]> {
       const identityId = parse(() => identifierSchema.parse(input.identityId))
       const held = await poolRead(() => heldParts(pool, identityId))
-      return LEGAL_HOLD_PARTS.filter(part => held.has(part))
+      return orderRequestParts(requestParts(), [...held], part => part)
     },
 
     /** A person's holds, current and past. */
@@ -1336,7 +1358,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       return outcome
     },
 
-    /** The groups the person has left, for their own page: identifiers and dates only (names are Identity's). */
+    /** The groups the person has left, for their own page: identifiers and dates only (the host shows group names). */
     async departures(input: { subjectId: unknown }): Promise<ProfileDepartureView[]> {
       const subjectId = parse(() => identifierSchema.parse(input.subjectId))
       if (await poolRead(() => isWithheld(pool, subjectId))) return []

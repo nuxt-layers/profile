@@ -143,10 +143,8 @@ export const PROFILE_MESSAGES_EN_GB = {
   'profile.requests.status.open': 'In progress',
   'profile.requests.status.completed': 'Completed',
   'profile.requests.part.profile': 'Your profile',
-  'profile.requests.part.identity': 'Your groups and memberships',
-  'profile.requests.part.authentication': 'How you sign in',
-  'profile.requests.part.authorisation': 'What you may do',
-  'profile.requests.part.configuration': 'Your account settings',
+  // The host's parts are worded by the host (`profile.requests.part.<name>`); this is the fallback.
+  'profile.requests.part.other': 'Another part of your account',
   'profile.requests.partStatus.pending': 'In progress',
   'profile.requests.partStatus.done': 'Done',
   'profile.requests.partStatus.exempt': 'Refused, with a legal reason',
@@ -161,7 +159,8 @@ export const PROFILE_MESSAGES_EN_GB = {
 } as const
 
 export type ProfileMessageKey = keyof typeof PROFILE_MESSAGES_EN_GB
-export type ProfileMessages = Partial<Record<ProfileMessageKey, string>>
+/** A host's wording: any of Profile's keys, and a name for each request part it declares. */
+export type ProfileMessages = Partial<Record<ProfileMessageKey | `profile.requests.part.${string}`, string>>
 
 export function formatMessage(template: string, params: Record<string, string | number> = {}): string {
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in params ? String(params[name]) : match))
@@ -174,7 +173,7 @@ export function resolveMessage(
   overrides: Record<string, ProfileMessages | undefined> | undefined,
   params?: Record<string, string | number>,
 ): string {
-  const template = overrides?.[locale]?.[key as ProfileMessageKey]
+  const template = overrides?.[locale]?.[key as keyof ProfileMessages]
     ?? (PROFILE_MESSAGES_EN_GB as Record<string, string>)[key]
     ?? key
   return formatMessage(template, params)

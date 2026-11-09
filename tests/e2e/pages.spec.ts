@@ -297,6 +297,8 @@ test('answers a request for a copy of all the data, and offers no deletion but c
   const list = page.getByRole('region', { name: 'Your requests' })
   await expect(list.getByRole('heading', { name: 'A copy of your data' })).toBeVisible()
   await expect(list.getByText('Completed', { exact: true })).toBeVisible()
+  // Profile's own part, a host part in the host's wording, and one in Profile's general wording.
+  for (const part of ['Your profile', 'Your groups and memberships', 'Another part of your account']) await expect(list.getByText(part, { exact: true })).toBeVisible()
   const download = page.waitForEvent('download')
   await list.getByRole('button', { name: 'Download my data' }).click()
   expect((await download).suggestedFilename()).toBe('my-data.json')

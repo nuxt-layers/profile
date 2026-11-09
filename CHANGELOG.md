@@ -4,6 +4,7 @@
 
 ## 2026-11-09
 
+- `createProfileTestPorts()` (and `@nuxt-layers/profile/testing`): stand-ins for every port but the database, refused outside tests unless a demonstration opts in; the minimal host uses them. `profileTasks()`: Profile's scheduled work in ADR-0012's shape. Both additions. The gaps between Profile's caller, access and mail ports and ADR-0012's shared shapes are recorded in the specification (§18).
 - Dependency review allows no advisories: the simple-git, braces and node-forge exceptions no longer match anything installed, and the `@simple-git/argv-parser` override is gone with simple-git. glob 14.0.2 and minimatch 11.0.1 are forced by override (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249) until nitropack's dependencies accept them.
 - Development toolchain moves to the ADR-0013 baseline: Node.js 26, pnpm 12.16.1 through Corepack, `@types/node` 26 and Nuxt 4.6.3 for development; `zod` ^4.6.7. Hosts' requirements are unchanged (Node.js 22 or later, `nuxt` ^4.5.0).
 - CI sets pnpm up with Corepack instead of a third-party action (ADR-0013 §5). The layer workflow had not started since the move to `nuxt-layers`, most likely because the organisation's Actions policy refuses that action.

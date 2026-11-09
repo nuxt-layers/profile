@@ -37,7 +37,6 @@ const server = spawn(process.execPath, [fileURLToPath(new URL('./.output/server/
     PROFILE_MIGRATION_DATABASE_URL: migration.toString(),
     PROFILE_DATABASE_URL: runtime.toString(),
     PROFILE_RUNTIME_ROLE: role,
-    PROFILE_MASTER_KEY: randomBytes(32).toString('base64'),
     NUXT_PROFILE_BASE_URL: origin,
   },
 })

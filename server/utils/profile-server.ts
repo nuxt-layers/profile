@@ -25,6 +25,7 @@ import {
   profileMigrationsDone,
   useProfileAccessDecision,
   useProfileClock,
+  useProfileTimeZone,
   useProfileDatabase,
   useProfileDisclosureContext,
   useProfileKeyWrapper,
@@ -58,6 +59,7 @@ async function service() {
     requestParts: useProfileRequestParts,
     // Read at each use, so every time comes from the host's clock (or Clock's system clock).
     clock: useProfileClock,
+    timeZone: useProfileTimeZone,
   })
 }
 

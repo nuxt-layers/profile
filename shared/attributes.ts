@@ -32,8 +32,6 @@ export const LOCALE_PATTERN = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/
 /** An E.164 telephone number, e.g. `+447700900123`. */
 export const PHONE_NUMBER_PATTERN = /^\+[1-9][0-9]{6,14}$/
 
-const timeZones: ReadonlySet<string> = new Set([...Intl.supportedValuesOf('timeZone'), 'UTC'])
-
 /** What a person may set, each validated and normalised. */
 export const attributeSchemas = {
   name: safeNameSchema(),
@@ -41,7 +39,12 @@ export const attributeSchemas = {
   family_name: safeNameSchema(),
   preferred_username: safeNameSchema(64),
   locale: z.string().max(35).regex(LOCALE_PATTERN, 'invalid-locale'),
-  zoneinfo: z.string().refine(value => timeZones.has(value), 'invalid-time-zone'),
+  /**
+   * An IANA time zone. The contract imports only zod, so it checks the shape
+   * here; whether the zone exists (spelt exactly, capitals included) is
+   * Clock's `isValidTimeZone`, on the server and in the details page.
+   */
+  zoneinfo: z.string().min(1, 'invalid-time-zone').max(64, 'invalid-time-zone').regex(/^\S+$/, 'invalid-time-zone'),
   email: z.string().trim().max(254).pipe(z.email('invalid-email')),
   phone_number: z.string().trim().regex(PHONE_NUMBER_PATTERN, 'invalid-phone-number'),
 } as const satisfies Record<ProfileAttribute, z.ZodType<string>>

@@ -183,6 +183,8 @@ export const requestViewSchema = z.strictObject({
   parts: z.array(requestPartViewSchema),
   /** For a completed access request: until when its archive can be downloaded; null once deleted or for other types. */
   archiveUntil: instantSchema.nullable(),
+  /** The IANA zone its deadlines are read in (`composeProfile`'s `timeZone`, UTC without it), so they are shown on the day they fall there. */
+  timeZone: z.string().min(1).max(64),
 })
 
 export type RequestView = z.infer<typeof requestViewSchema>

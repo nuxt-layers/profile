@@ -222,6 +222,49 @@ alter table {{schema}}."legal_hold" drop constraint "legal_hold_parts_check",
   );
 `,
   },
+  {
+    // Retention periods are calendar days in the controller's zone, so
+    // Profile computes each cutoff through Clock and passes the instant.
+    // The function still refuses to delete anything younger than the hard
+    // floors (365 and 30 days), whichever cutoff is earlier. 0008 drops
+    // 0004's function.
+    id: '0007_retention_cutoffs',
+    sql: `
+create function {{schema}}.apply_retention_before(p_at timestamptz, p_request_before timestamptz, p_hold_before timestamptz)
+returns jsonb language plpgsql volatile security definer set search_path = pg_catalog, pg_temp set timezone = 'UTC' as $$
+declare n_requests integer; n_holds integer;
+begin
+  delete from {{schema}}."request" r
+    where r."status" = 'completed' and r."completed_at" <= least(p_request_before, p_at - interval '365 days')
+      and not exists (select 1 from {{schema}}."legal_hold" h where h."identity_id" = r."identity_id" and h."ended_at" is null and h."ends_at" > p_at);
+  get diagnostics n_requests = row_count;
+  delete from {{schema}}."legal_hold" where "ended_at" is not null and "ended_at" <= least(p_hold_before, p_at - interval '30 days');
+  get diagnostics n_holds = row_count;
+  return jsonb_build_object('requests', n_requests, 'legalHolds', n_holds);
+end $$;
+revoke all on function {{schema}}.apply_retention_before(timestamptz, timestamptz, timestamptz) from public;
+`,
+  },
+  {
+    // 0004's day-based retention function, replaced by 0007's; nothing calls it.
+    id: '0008_drop_day_retention',
+    sql: `
+drop function {{schema}}.apply_retention(timestamptz, integer, integer);
+`,
+  },
+  {
+    // When a correction or erasure is raised to operators for a group not
+    // yet renamed: halfway to its due date, computed through Clock when the
+    // request opens rather than by the database at each maintenance run.
+    // Existing requests are backfilled once with the same halfway point the
+    // earlier query computed, so none changes when it escalates.
+    id: '0009_rename_escalate_at',
+    sql: `
+alter table {{schema}}."request" add column "rename_escalate_at" timestamptz;
+update {{schema}}."request" set "rename_escalate_at" = "opened_at" + ("due_at" - "opened_at") / 2;
+alter table {{schema}}."request" alter column "rename_escalate_at" set not null;
+`,
+  },
 ]
 
 const SCHEMA_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/
@@ -271,7 +314,7 @@ export async function runProfileMigrations(pool: PostgresPoolLike, schema: strin
       await client.query(`grant select, insert, update on ${quoted}."request", ${quoted}."legal_hold", ${quoted}."closed_identity" to ${role}`)
       await client.query(`grant select, insert on ${quoted}."erased" to ${role}`)
       await client.query(`grant usage on sequence ${quoted}."outbox_sequence_seq" to ${role}`)
-      await client.query(`grant execute on function ${quoted}.apply_retention(timestamptz, integer, integer) to ${role}`)
+      await client.query(`grant execute on function ${quoted}.apply_retention_before(timestamptz, timestamptz, timestamptz) to ${role}`)
     }
     await client.query('commit')
     return applied

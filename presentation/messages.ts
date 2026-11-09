@@ -135,6 +135,7 @@ export const PROFILE_MESSAGES_EN_GB = {
   'profile.requests.dueAt': 'Due by',
   'profile.requests.download': 'Download my data',
   'profile.requests.availableUntil': 'Available until {date}',
+  'profile.requests.dateInZone': '{date} ({zone} time)',
   'profile.requests.fileName': 'my-data.json',
   'profile.requests.type.access': 'A copy of your data',
   'profile.requests.type.correction': 'A correction',

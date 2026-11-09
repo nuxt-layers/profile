@@ -447,6 +447,9 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     await admin.query(`grant usage on schema "${schema}" to "${role}"`)
     await admin.query(`grant select on all tables in schema "${schema}" to "${role}"`)
     const legacy = createService({ ...base(), schema })
+    // Migration 0009 backfills the rename escalation halfway to the due date, as the earlier query computed it.
+    const { rows: [backfilled] } = await admin.query(`select "rename_escalate_at" = "opened_at" + ("due_at" - "opened_at") / 2 as "halfway" from "${schema}"."request" where "request_id" = $1`, [requestId])
+    expect(backfilled?.halfway).toBe(true)
     const view = await legacy.getRequest({ requestId })
     // Declared parts first in declaration order, then stored parts no longer declared, alphabetically.
     expect(view?.parts.map(part => part.part)).toEqual(['profile', 'authentication', 'authorisation', 'configuration', 'identity'])
@@ -497,9 +500,9 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     await timed().relayOutbox({ limit: 1000, publish: async () => {} })
     const person = uuidv7()
     await provision(person)
-    await admin.query(`insert into "profile"."request" ("request_id", "identity_id", "type", "origin", "status", "correlation_id", "opened_at", "due_at", "completed_at")
-      values ($1, $2, 'restriction', 'person', 'completed', $3, now() - interval '900 days', now() - interval '870 days', now() - interval '880 days'),
-             ($4, $5, 'restriction', 'person', 'completed', $3, now() - interval '900 days', now() - interval '870 days', now() - interval '880 days')`,
+    await admin.query(`insert into "profile"."request" ("request_id", "identity_id", "type", "origin", "status", "correlation_id", "opened_at", "due_at", "rename_escalate_at", "completed_at")
+      values ($1, $2, 'restriction', 'person', 'completed', $3, now() - interval '900 days', now() - interval '870 days', now() - interval '885 days', now() - interval '880 days'),
+             ($4, $5, 'restriction', 'person', 'completed', $3, now() - interval '900 days', now() - interval '870 days', now() - interval '885 days', now() - interval '880 days')`,
     [uuidv7(), person, correlationId(), uuidv7(), ids.ada])
     await timed().placeHold({ identityId: ids.ada, parts: ['sign-in'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 100 * 86_400_000).toISOString(), correlationId: correlationId() })
     at = new Date(Date.now() + 40 * 86_400_000)

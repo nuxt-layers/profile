@@ -11,8 +11,8 @@
 | `processed_event` | Idempotent commands | Command identifiers (the host's event identifiers, where it relays events) | Yes | Indefinitely | Identifiers only |
 | `outbox` | Events awaiting relay | Event type and payload: identifiers, attribute names, codes | Yes | Delivered events: `outboxDays` (default 30) | No values |
 | `lookup_window` | Lookup rate limit | Viewer identifier, window, count | Yes | Current window | Identifiers only |
-| `request`, `request_part`, `request_group` | Data-subject requests | Identifiers, types, codes, times; part names (`profile` and the host's declared names, in a code grammar); access archives sealed with the person's key | Yes | Completed: `requestDays` (default 730); archives 7 days | Deleted only by the owner's `apply_retention` |
-| `legal_hold`, `closed_identity`, `held_closure` | Legal holds deferring erasure | Identifiers, part names (as for requests), reason codes, dates | Yes | Ended holds: `endedHoldDays` (default 365) | Deleted only by the owner's `apply_retention` |
+| `request`, `request_part`, `request_group` | Data-subject requests | Identifiers, types, codes, times; part names (`profile` and the host's declared names, in a code grammar); access archives sealed with the person's key | Yes | Completed: `requestDays` (default 730); archives 7 days | Deleted only by the owner's `apply_retention_before` |
+| `legal_hold`, `closed_identity`, `held_closure` | Legal holds deferring erasure | Identifiers, part names (as for requests), reason codes, dates | Yes | Ended holds: `endedHoldDays` (default 365) | Deleted only by the owner's `apply_retention_before` |
 | `contact_verification` | Pending contact-detail verification | Keyed digest of the code bound to identity, attribute and value; attempts; expiry | Only for verification | 10 minutes | Code never stored; destroyed with the key |
 | `schema_migration` | Applied migrations | Migration identifiers | Yes | Indefinitely | Owner role only |
 

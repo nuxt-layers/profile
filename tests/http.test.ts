@@ -209,6 +209,19 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
     expect(await call('PUT', '/api/profile/me/disclosure', { as: me, body: { expectedVersion: 2, settings } })).toMatchObject({ status: 409 })
   })
 
+  it('checks a time zone with Clock: spelt exactly, links accepted, offsets and unknown names refused', async () => {
+    const me = await person()
+    await call('GET', '/api/profile/me', { as: me })
+    for (const zoneinfo of ['europe/london', '+01:00', 'Mars/Olympus']) {
+      expect(await call('PATCH', '/api/profile/me', { as: me, body: { expectedVersion: 1, changes: { zoneinfo } } }))
+        .toMatchObject({ status: 400, data: { code: 'validation-failed', reason: 'invalid-time-zone' } })
+    }
+    expect(await call('PATCH', '/api/profile/me', { as: me, body: { expectedVersion: 1, changes: { zoneinfo: 'Europe/London' } } }))
+      .toMatchObject({ status: 200, data: { attributes: { zoneinfo: 'Europe/London' }, version: 2 } })
+    expect(await call('PATCH', '/api/profile/me', { as: me, body: { expectedVersion: 2, changes: { zoneinfo: 'Europe/Kiev' } } }))
+      .toMatchObject({ status: 200, data: { attributes: { zoneinfo: 'Europe/Kiev' }, version: 3 } })
+  })
+
   it('needs a recent sign-in to change a contact detail, but not a name', async () => {
     const me = await person()
     const old = 20 * 60
@@ -308,7 +321,7 @@ describe.skipIf(!hasDatabase)('the /api/profile endpoints', () => {
     const me = await person()
     signInDown = true
     const opened = await call('POST', '/api/profile/me/requests', { as: me, body: { type: 'access' } })
-    expect(opened.data).toMatchObject({ status: 'open', archiveUntil: null })
+    expect(opened.data).toMatchObject({ status: 'open', archiveUntil: null, timeZone: 'UTC' })
     expect(opened.data.parts.find((part: { part: string }) => part.part === 'sign-in').status).toBe('pending')
     expect(await call('GET', `/api/profile/me/requests/${opened.data.requestId}/archive`, { as: me })).toMatchObject({ status: 403 })
   })

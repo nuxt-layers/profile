@@ -1,4 +1,4 @@
-import { ClockError, createClock } from '@nuxt-layers/clock/server'
+import { createClock } from '@nuxt-layers/clock/server'
 import type { ProfileClock } from '../../contracts'
 import { ProfileFailure } from '../../contracts'
 
@@ -56,7 +56,9 @@ export function profileTime(source?: ProfileClock | (() => ProfileClock | undefi
     }
     catch (error) {
       if (error instanceof ProfileFailure) throw error
-      return unavailable(error instanceof ClockError ? `${reason}: ${error.code}` : reason)
+      // ClockError is not exported from Clock's `/server` entry; its stable `code` is read structurally.
+      const code = (error as { code?: unknown } | null)?.code
+      return unavailable(typeof code === 'string' && code.startsWith('CLOCK_') ? `${reason}: ${code}` : reason)
     }
   }
   return Object.freeze({

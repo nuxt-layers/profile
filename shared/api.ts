@@ -16,14 +16,23 @@ export const PROFILE_API_PREFIX = '/api/profile'
 export const PROFILE_CORRELATION_HEADER = 'x-correlation-id'
 
 /**
- * The signed-in person, as the host's subject resolver gives it: a
- * structural subset of Authentication's principal. Never read from a request.
+ * Authenticator assurance levels Profile distinguishes (NIST SP 800-63B):
+ * `aal2` is needed for exports, contact-detail changes and naming suspended
+ * members.
+ */
+export const PROFILE_ASSURANCE_LEVELS = ['aal1', 'aal2'] as const
+export type ProfileAssuranceLevel = typeof PROFILE_ASSURANCE_LEVELS[number]
+
+/**
+ * The signed-in person, as the host's subject resolver gives it: who they
+ * are (`principalId`, the same identifier their record is kept under), when
+ * they last signed in, and how strongly. Never read from a request.
  */
 export const profileSubjectSchema = z.strictObject({
   principalId: identifierSchema,
   authenticatedAt: z.iso.datetime(),
   assurance: z.strictObject({
-    level: z.enum(['aal1', 'aal2']),
+    level: z.enum(PROFILE_ASSURANCE_LEVELS),
     phishingResistant: z.boolean(),
   }),
 })
@@ -72,7 +81,7 @@ export const displayNamesRequestSchema = z.strictObject({
   purpose: z.enum(LOOKUP_PURPOSES),
 }).refine(body => body.purpose !== 'administration' || typeof body.groupId === 'string', 'group-required')
 
-/** A group the person has left, as their own page lists it. The group's name is Identity's, shown through the host. */
+/** A group the person has left, as their own page lists it. Profile holds no group names: the host shows them. */
 export interface ProfileDepartureView {
   groupId: string
   endedAt: string

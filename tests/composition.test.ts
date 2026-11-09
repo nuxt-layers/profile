@@ -13,6 +13,7 @@ import {
   useProfileAccessDecision,
   useProfileClock,
   useProfileDatabase,
+  useProfileRequestParts,
   useProfileDisclosureContext,
   useProfileKeyWrapper,
   useProfileNotifier,
@@ -93,6 +94,19 @@ describe('composeProfile', () => {
   it('refuses options it does not know', () => {
     expect(() => composeProfile({ ...ports(), keys: {} } as never)).toThrow(TypeError)
     expect(() => useProfileDatabase()).toThrow(ProfileCompositionError)
+  })
+
+  it('refuses an invalid request-part declaration, or coordinated parts without the coordination port, supplying nothing', () => {
+    const keyWrapper = { currentVersion: () => 'v1', wrap: async () => ({ version: 'v1', wrapped: '' }), unwrap: async () => new Uint8Array() }
+    expect(() => composeProfile({ ...ports(), keyWrapper, requestParts: { parts: [{ name: 'profile' }] } })).toThrow(/requestParts/)
+    expect(() => useProfileDatabase()).toThrow(ProfileCompositionError)
+    expect(() => composeProfile({ ...ports(), requestParts: { parts: [{ name: 'sign-in', coordinated: true }] } })).toThrow(ProfileCompositionError)
+    expect(() => useProfileDatabase()).toThrow(ProfileCompositionError)
+    expect(useProfileRequestParts().all).toEqual(['profile'])
+
+    // A valid declaration is what Profile then uses.
+    composeProfile({ ...ports(), keyWrapper, requestParts: { parts: [{ name: 'sign-in', holdable: true }] } }).catch(() => {})
+    expect(useProfileRequestParts()).toMatchObject({ all: ['profile', 'sign-in'], holdable: ['profile', 'sign-in'] })
   })
 
   it('is all or nothing: an invalid port leaves no port supplied', () => {

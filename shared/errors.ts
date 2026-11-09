@@ -56,7 +56,7 @@ export class ProfileCompositionError extends Error {
 
 /**
  * A server function's failure, carrying a contract code. `unavailable` means
- * the database, the key port or Identity's port failed, and the operation
+ * the database, the key port or the disclosure-context port failed, and the operation
  * failed closed. The detail is for server logs only and never names a value.
  */
 export class ProfileFailure extends Error {

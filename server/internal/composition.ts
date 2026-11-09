@@ -6,11 +6,13 @@ import type {
   ProfileKeyWrapper,
   ProfileNotifier,
   ProfileRequestCoordinator,
+  ProfileRequestParts,
+  ProfileRequestPartsDeclaration,
   ProfileRetention,
   ProfileRetentionInput,
   ProfileSubjectResolver,
 } from '../../contracts'
-import { ProfileCompositionError, ProfileFailure, resolveProfileRetention } from '../../contracts'
+import { ProfileCompositionError, ProfileFailure, resolveProfileRequestParts, resolveProfileRetention } from '../../contracts'
 import { runProfileMigrations } from '../database/migrations'
 import { systemProfileClock } from './clock'
 
@@ -33,6 +35,7 @@ let accessDecision: ProfileAccessDecision | null = null
 let notifier: ProfileNotifier | null = null
 let clock: ProfileClock | null = null
 let retention: ProfileRetention = resolveProfileRetention()
+let requestParts: ProfileRequestParts = resolveProfileRequestParts()
 let migration: Promise<string[]> | null = null
 
 export function provideProfileDatabase(next: ProfileDatabase): void {
@@ -59,7 +62,7 @@ export function provideProfileDisclosureContext(next: ProfileDisclosureContextPo
   disclosureContext = next
 }
 
-/** The signed-in person for each `/api/profile/*` request, from Authentication through the host. */
+/** The signed-in person for each `/api/profile/*` request, from the host's sign-in. */
 export function provideProfileSubjectResolver(next: ProfileSubjectResolver): void {
   if (typeof next?.resolve !== 'function') {
     throw new TypeError('composeProfile: `subjectResolver` expects an object with a resolve(event) function.')
@@ -67,7 +70,7 @@ export function provideProfileSubjectResolver(next: ProfileSubjectResolver): voi
   subjectResolver = next
 }
 
-/** Each other member's part of a data-subject request, from iam-integration's `profileRequestCoordinatorFromMembers`. */
+/** Each coordinated part of an access request, from the host. */
 export function provideProfileRequestCoordinator(next: ProfileRequestCoordinator): void {
   if (typeof next?.exportPart !== 'function') {
     throw new TypeError('composeProfile: `requestCoordinator` expects an object with an exportPart(input) function.')
@@ -75,7 +78,7 @@ export function provideProfileRequestCoordinator(next: ProfileRequestCoordinator
   requestCoordinator = next
 }
 
-/** Authorisation's decisions on Profile's permissions, from iam-integration's `profileAccessDecisionFromAuthorisation`. */
+/** The host's access decisions on Profile's permissions. */
 export function provideProfileAccessDecision(next: ProfileAccessDecision): void {
   if (typeof next?.allows !== 'function') {
     throw new TypeError('composeProfile: `accessDecision` expects an object with an allows(input) function.')
@@ -92,13 +95,8 @@ export function provideProfileNotifier(next: ProfileNotifier): void {
 }
 
 /**
- * The suite's clock (iam-integration architecture §7): the host supplies the
- * same clock to every member, or none. Trusted like a key: only the host's
- * server code composes it, and no request can set or move it.
- */
-/**
  * Optional: how long Profile keeps delivered events, completed requests and
- * ended legal holds (iam-integration retention), within
+ * ended legal holds, within
  * `PROFILE_RETENTION_BOUNDS`. Without it, the defaults. Shorter than a
  * default needs `riskTreatment`; an invalid value fails at composition.
  */
@@ -110,6 +108,25 @@ export function useProfileRetention(): ProfileRetention {
   return retention
 }
 
+/**
+ * Optional: the parts of data-subject requests beside Profile's own, which
+ * are coordinated, which can be held, which is the directory part, and the
+ * defaults per type. Without it, Profile's part only. An invalid
+ * declaration fails at composition.
+ */
+export function provideProfileRequestParts(input: ProfileRequestPartsDeclaration): void {
+  requestParts = resolveProfileRequestParts(input)
+}
+
+export function useProfileRequestParts(): ProfileRequestParts {
+  return requestParts
+}
+
+/**
+ * The host's clock: the same clock it gives every capability, or none.
+ * Trusted like a key: only the host's server code composes it, and no
+ * request can set or move it.
+ */
 export function provideProfileClock(next: ProfileClock): void {
   if (typeof next?.now !== 'function') {
     throw new TypeError('composeProfile: `clock` expects an object with a now() function.')
@@ -186,5 +203,6 @@ export function clearProfileComposition(): void {
   notifier = null
   clock = null
   retention = resolveProfileRetention()
+  requestParts = resolveProfileRequestParts()
   migration = null
 }

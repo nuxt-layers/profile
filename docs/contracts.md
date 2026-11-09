@@ -1,4 +1,4 @@
-# Profile Specification (contract version 1)
+# Profile Specification (contract version 2)
 
 > **In short:** the detailed rules behind Profile's public contract, for maintainers. Hosts compose from [`CONTRACT.md`](../CONTRACT.md) alone.
 
@@ -12,13 +12,13 @@ Profile answers two questions: **what describes this person**, and **what may th
 |---|---|---|
 | Names, contact details and preferences that describe a person | **Profile** | Its own schema, encrypted per person (§6) |
 | Who may see each attribute | **Profile**, under the person's control | Disclosure settings (§4) |
-| Identities, groups, tenants, memberships, a person's standing | Identity | The disclosure-context port and Identity's events, adapted by the host |
+| Identities, groups, tenants, memberships, a person's standing | The host's directory | The disclosure-context port (§9) and Profile's own commands (§8.1), onto which the host maps its directory's changes |
 | Sign-in identifiers, credentials, sessions | Authentication | Never: a contact email here is independent of a sign-in email there |
 | Domain records | Domain capabilities | They store Identity's identifiers and ask Profile for names |
 
 ## 2. Keys
 
-Every record is keyed by Identity's identifier (a UUIDv7), never derived from personal data. Only identities of kind `person` have a record. A record is created, empty, when Identity announces `identity.provisioned`, or when the person first saves something if that event has not arrived yet.
+Every record is keyed by Identity's identifier (a UUIDv7), never derived from personal data. Only people have a record. A record is created, empty, when the host calls `provisionProfileRecord` (§8.1), or when the person first saves something if that has not happened yet.
 
 ## 3. The record
 
@@ -55,13 +55,13 @@ Finally, `anonymiseOnDeparture` (default `false`) shows the person as "Former me
 
 ## 5. What a viewer sees
 
-Identity's disclosure-context port says how the viewer is related to each person (`self`, `same-group`, `former-member`, `same-tenant`, `none`) and the person's standing (`visible`, `paused`, `suspended`, `closing`, `gone`). Profile then applies its rules, as the pure functions `discloseAttributes` and `discloseDisplayName`:
+The host's disclosure-context port (§9) says how the viewer is related to each person (`self`, `same-group`, `former-member`, `same-tenant`, `none`) and the person's standing (`visible`, `paused`, `suspended`, `closing`, `gone`). Profile then applies its rules, as the pure functions `discloseAttributes` and `discloseDisplayName`:
 
 1. The person sees everything of their own, whatever their standing.
 2. A `suspended`, `closing` or `gone` person is hidden from everyone else.
 3. A `paused` person is hidden from listings (`purpose: 'listing'`: member lists, profiles, search), but stays attributed on past contributions (`purpose: 'attribution'`).
-   With a group context, the subject's own membership of that group makes their standing stricter (`standingInGroup`): a member paused there counts as `paused` there, and one suspended there as `suspended`, as iam-integration's pausing and suspension process requires.
-4. In an `administration` lookup (a group's member list as its administrators see it), a `suspended` fellow member of the group is shown by display name only, never other attributes, and only within the audience the person chose for that name, to a viewer who holds `profile.suspended-people:view` on the group now. Profile asks Authorisation through the access-decision port (§9), once per lookup and only when the answer could name someone. Otherwise it is a listing.
+   With a group context, the subject's own membership of that group makes their standing stricter (`standingInGroup`): a member paused there counts as `paused` there, and one suspended there as `suspended`, so a person hidden in a group is hidden there for every purpose a hidden person is.
+4. In an `administration` lookup (a group's member list as its administrators see it), a `suspended` fellow member of the group is shown by display name only, never other attributes, and only within the audience the person chose for that name, to a viewer who holds `profile.suspended-people:view` on the group now. Profile asks the host's access decision through the access-decision port (§9), once per lookup and only when the answer could name someone. Otherwise it is a listing.
 5. Otherwise each attribute is shown only to its audience: `same-group` reaches `group` and `tenant`; `same-tenant` reaches `tenant`; `none` reaches nothing.
 6. A former member (§5.1) is shown by display name only, never by other attributes.
 
@@ -69,13 +69,13 @@ A display name is returned as a code, never as text the host must translate: `{ 
 
 ### 5.1 Departure data policy
 
-When Identity announces `membership.ended`, Profile keeps how the leaver will be shown in that group (joining and leaving ([resources](../RESOURCES.md))):
+When the host records a departure (`recordProfileDeparture`, §8.1), Profile keeps how the leaver will be shown in that group:
 
 - the display name fellow members could see at that moment, encrypted with the leaver's key (null if they could see none);
 - a pseudonym number, unique and stable within the group;
 - nothing at all, if the person chose `anonymiseOnDeparture`.
 
-A later lookup with that group as context applies the group's attribution, which Identity supplies: `keep-name` shows the kept name, `pseudonymise` shows "Former member N", `anonymise` shows "Former member". The leaver may at any time choose anonymity in a group (`anonymiseProfileDeparture`): the kept name and the pseudonym are deleted, whatever the group's policy.
+A later lookup with that group as context applies the group's attribution, which the disclosure context supplies: `keep-name` shows the kept name, `pseudonymise` shows "Former member N", `anonymise` shows "Former member". The leaver may at any time choose anonymity in a group (`anonymiseProfileDeparture`): the kept name and the pseudonym are deleted, whatever the group's policy.
 
 ## 6. Encryption and erasure
 
@@ -83,7 +83,7 @@ Every attribute value, and every kept departure name, is encrypted with the pers
 
 The data key is stored only **wrapped** by the host's `ProfileKeyWrapper`, which binds the identity to the wrapping and versions its wrapping key.
 
-**Erasure** (anonymisation by unlinking, ADR-0005 §2.8) deletes the record, the departures and the wrapped key, and records the identifier as erased so that no record is created for it again. Domain records keep the identifier, which then refers to nobody. It happens when Identity announces `identity.closed`, or through `eraseProfile` with a reason code, and is announced as `profile.anonymised`.
+**Erasure** (anonymisation by unlinking, ADR-0005 §2.8) deletes the record, the departures and the wrapped key, and records the identifier as erased so that no record is created for it again. Domain records keep the identifier, which then refers to nobody. It happens when the host closes the account (`closeProfileSubject`, §8.1), or through `eraseProfile` with a reason code, and is announced as `profile.anonymised`.
 
 **Backups.** A backup taken before erasure still holds the wrapped key. The host therefore rotates its wrapping key: `rewrapProfileKeys()` moves every live key to the current version, and `profileKeyVersionsInUse()` shows when no live key needs an old one. Once every backup taken under an old version has expired, or sooner, the host retires that version. An erased person's key is never re-wrapped, so their data in older backups becomes unreadable when the version it was wrapped with is retired. Backups never hold plaintext.
 
@@ -97,7 +97,7 @@ The data key is stored only **wrapped** by the host's `ProfileKeyWrapper`, which
 | `validation-failed` | 400 | Malformed input; problem codes only |
 | `conflict` | 409 | The record changed since the version the change was made against (`version-changed`) |
 | `rate-limited` | 429 | The viewer's lookups for this window are spent |
-| `unavailable` | 503 | Database, key port, subject resolver or Identity's port failure. Fails closed: no stale or partial answer |
+| `unavailable` | 503 | Database, key port, subject resolver or disclosure-context port failure. Fails closed: no stale or partial answer |
 
 ## 8. Events
 
@@ -114,40 +114,55 @@ Written to Profile's transactional outbox in the same transaction as the change,
 | `profile.request-completed` | `requestId`, `identityId`, each part's `status` and `reasonCode` |
 | `profile.request-escalated` | `requestId`, `identityId`, `reasonCode` (`due-soon`, `group-rename-overdue`): operators act |
 | `profile.legal-hold-placed` | `holdId`, `identityId`, `parts`, `reasonCode`, `endsAt` |
-| `profile.legal-hold-ended` | `holdId`, `identityId`, `parts`, `released` (no hold covers them any more), `identityClosed`, `reasonCode`: the host's handler erases the released parts of a closed identity |
-| `profile.group-disposed` | `groupId`, how many departures were removed and how many a hold kept (§17): Identity's confirmation |
+| `profile.legal-hold-ended` | `holdId`, `identityId`, `parts`, `released` (no hold covers them any more), `identityClosed` (whether `closeProfileSubject` has run), `reasonCode`: the host erases the released parts of a closed account |
+| `profile.group-disposed` | `groupId`, how many departures were removed and how many a hold kept (§17): the host's confirmation that Profile's part is gone |
 | `profile.retention-applied` | How many delivered events, completed requests and ended holds were deleted, when a run deleted anything (§17) |
 
 Events carry identifiers, attribute names and codes only: never a value.
 
-Profile consumes `identity.provisioned`, `membership.ended`, `identity.closed`, `identity.paused`, `group.renamed`, `group.deleted` (only when its disposal is due) and `group.disposal-due`, idempotently by event id; `identity.paused` and `group.renamed` complete parts of data-subject requests (§14), and the last two dispose of a deleted group's part (§17). It reads pausing, suspension and closure from the disclosure-context port at each lookup instead, so a standing is never stale.
+Request and hold events name parts as stored: `profile` and the host's declared names (§14).
+
+### 8.1 Commands
+
+Profile parses no other capability's events. The host maps its directory's changes onto Profile's own commands (schemas in `shared/commands.ts`, exported from the contract). Each takes `commandId` (a UUIDv7; a host relaying an event passes the event's identifier) and `correlationId`, is a strict object, and is applied once: the id is recorded in `processed_event` in the same transaction as the effect and its outbox writes, so a repeat answers `duplicate` and changes nothing.
+
+| Command | Input beside the ids | Effect |
+|---|---|---|
+| `provisionProfileRecord` | `subjectId` | Creates the empty record and key (`profile.created`); never for an erased identifier. The host calls it for people only |
+| `recordProfileDeparture` | `subjectId`, `groupId`, `endedAt` | Snapshots how the leaver is shown in the group (§5.1) |
+| `closeProfileSubject` | `subjectId` | Records the closure; erases (§6, reason `identity-closed`) unless a hold covers `profile`, when the record is kept unread; marks each held part of open erasures `held`; settles the directory part (§14) |
+| `recordProfilePause` | `subjectId` | Completes the directory part of open restriction requests |
+| `recordProfileGroupRenamed` | `groupId` | Marks the group renamed in open requests, completing the directory part once every named group is renamed |
+| `disposeProfileGroup` | `groupId` | Disposes of Profile's part of a deleted group (§17); the host calls it only when disposal is due, after any hold on the group |
+
+Profile reads pausing, suspension and closure from the disclosure-context port at each lookup, so a standing is never stale.
 
 ## 9. Ports
 
-Each is passed to `composeProfile` under its key (`database`, `keyWrapper`, `disclosureContext`, `subjectResolver`, `requestCoordinator`, `accessDecision`, `notifier`, `clock`).
+Each is passed to `composeProfile` under its key (`database`, `keyWrapper`, `disclosureContext`, `subjectResolver`, `requestCoordinator`, `accessDecision`, `notifier`, `clock`), beside `retention` and `requestParts` (§14). Every port is stated in Profile's own terms; the host adapts what it has.
 
 | Port | Required | Purpose |
 |---|---|---|
 | `ProfileDatabase` | Yes | PostgreSQL pool (runtime role), schema, and optionally the migration pool and the runtime role to grant |
 | `ProfileKeyWrapper` | Yes | Wraps and unwraps each person's data key with a versioned host key (KMS, HSM, vault; `createLocalProfileKeyWrapper` for development) |
-| `ProfileDisclosureContext` | Yes | Identity's disclosure-context port, read `bounded` |
-| `ProfileSubjectResolver` | For the endpoints | The signed-in person for an HTTP request, from Authentication through the host |
-| `ProfileRequestCoordinator` | For data-subject requests | Each other member's part of an access request (§14), from iam-integration's `profileRequestCoordinatorFromMembers`; a member's failure rejects that part only |
-| `ProfileAccessDecision` | For `administration` lookups | Whether the viewer holds one of Profile's permissions on a group now, from iam-integration's `profileAccessDecisionFromAuthorisation` |
+| `ProfileDisclosureContext` | Yes | The host's directory: relationship, standing, membership state and departure policy for one viewer and up to 200 people (`DisclosureContext`, §5), read `bounded`, parsed strictly |
+| `ProfileSubjectResolver` | For the endpoints | The signed-in person for an HTTP request (`ProfileSubject`: `principalId`, `authenticatedAt`, `assurance.level` `aal1` or `aal2`, `assurance.phishingResistant`), from the host's sign-in |
+| `ProfileRequestCoordinator` | When a declared part is `coordinated` | Each coordinated part of an access request (§14); a failure rejects that part only. Declaring a coordinated part without it fails composition |
+| `ProfileAccessDecision` | For `administration` lookups | Whether the viewer holds one of Profile's permissions on a group now, by the host's access decision |
 | `ProfileNotifier` | For verification | Delivers a verification code by email or SMS (§15); nothing else |
-| `ProfileClock` | No: the system clock without it | The current time, `{ now(): Date }`, the same clock the host gives every member (§16) |
+| `ProfileClock` | No: the system clock without it | The current time, `{ now(): Date }`, the same clock the host gives every capability (§16) |
 
-Profile's permission, for the host to add to Authorisation's catalogue (`PROFILE_PERMISSIONS`):
+Profile's own declaration of its permission (`PROFILE_PERMISSIONS`), for the host to register with its access decision:
 
 | Permission | Risk | Effect | Allows |
 |---|---|---|---|
-| `profile.suspended-people:view` | `high` | `view` | Seeing the display names of a group's suspended members, in an `administration` lookup. `high` because it discloses personal data otherwise hidden, so Authorisation's `*:view` wildcards never reach it: a host names it in the `owner` and `administrator` roles |
+| `profile.suspended-people:view` | `high` | `view` | Seeing the display names of a group's suspended members, in an `administration` lookup. `high` because it discloses personal data otherwise hidden: the host grants it by name only, never through a wildcard, to a group's owners and administrators, at `aal2` |
 
 ## 10. Server functions
 
 | Function | Does |
 |---|---|
-| `composeProfile(composition)` | Supplies every port in one call (ADR-0012 §1) and applies migrations through the migration pool, granting the runtime role data access only. The only way to compose Profile; the per-port registry is private (`server/internal/composition.ts`). All or nothing: a missing required port (`database`, `keyWrapper`, `disclosureContext`), an invalid port or an unknown option throws and leaves nothing supplied |
+| `composeProfile(composition)` | Supplies every port and the request-part declaration in one call (ADR-0012 §1) and applies migrations through the migration pool, granting the runtime role data access only. The only way to compose Profile; the per-port registry is private (`server/internal/composition.ts`). All or nothing: a missing required port (`database`, `keyWrapper`, `disclosureContext`), an invalid port or an unknown option throws and leaves nothing supplied |
 | `getOwnProfile({ subjectId })` | The person's own record, settings and `version` (0 before anything is stored); null once erased |
 | `updateProfile({ subjectId, changes, correlationId, expectedVersion? })` | §3; with `expectedVersion`, `conflict` if the record changed since |
 | `setProfileDisclosure({ subjectId, settings, correlationId, expectedVersion? })` | §4; likewise |
@@ -156,7 +171,7 @@ Profile's permission, for the host to add to Authorisation's catalogue (`PROFILE
 | `consumeProfileLookup({ viewerId })` | Counts one lookup against the rate limit (§12); `rate-limited` once spent |
 | `viewProfile({ viewerId, subjectId, groupId? })` | One person's display name and disclosed attributes, as a listing |
 | `exportProfileData({ subjectId })` | Profile's part of a data-subject export, decrypted |
-| `applyProfileIdentityEvent(event)` | §8 |
+| `provisionProfileRecord`, `recordProfileDeparture`, `closeProfileSubject`, `recordProfilePause`, `recordProfileGroupRenamed`, `disposeProfileGroup` | Commands (§8.1) |
 | `eraseProfile({ identityId, reasonCode, correlationId })` | §6 |
 | `rewrapProfileKeys({ limit? })`, `profileKeyVersionsInUse()` | Key rotation (§6) |
 | `relayProfileOutbox({ publish, limit? })` | §8 |
@@ -165,9 +180,9 @@ Profile's permission, for the host to add to Authorisation's catalogue (`PROFILE
 | `listProfileRequests({ subjectId })`, `getProfileRequest({ requestId })` | The person's requests; one request, for operators |
 | `getProfileRequestArchive({ subjectId, requestId })` | A completed access request's archive, while it lasts |
 | `settleProfileRequestPart({ requestId, part, outcome, reasonCode?, correlationId })` | An operator marks a part `done`, or `exempt` with a reason code |
-| `recordProfileRequestPart({ identityId, part, correlationId })` | The host's handler reports Authentication's or Authorisation's erasure done |
+| `recordProfileRequestPart({ identityId, part, correlationId })` | The host reports its erasure of a declared part done (not `profile`, not the directory part) |
 | `placeProfileLegalHold(...)`, `releaseProfileLegalHold(...)`, `listProfileLegalHolds({ identityId })` | Legal holds (§14), for operators |
-| `profileLegalHoldParts(identityId)` | The parts under hold now, for the host's closure handler |
+| `profileLegalHoldParts(identityId)` | The parts under hold now, for the host's closure handling |
 | `profileTasks()` | ADR-0012's scheduled-work shape: `profile.maintenance`, every 300 seconds, running `runProfileMaintenance()` |
 | `createProfileTestPorts({ demonstration? })` | Stand-ins for every port but the database (ADR-0012 §3), refused unless `NODE_ENV` is `test` or a demonstration opts in |
 | `runProfileMaintenance()` | Ends holds on their date, deletes expired archives, escalates requests, retries failed access parts, drops expired codes |
@@ -255,24 +270,34 @@ It renders "Member" on the server and until the answer arrives, and whenever Pro
 
 ## 14. Data-subject requests and legal holds
 
-Profile is the person's single point of contact for requests about their data (iam-integration's process ([resources](../RESOURCES.md))). It records each request and each member's part, and keeps legal holds; each member answers for what it holds.
+Profile is the person's single point of contact for requests about their data. It records each request and each part, and keeps legal holds; whoever holds a part answers for it.
+
+**Parts.** Profile names one part, its own: `profile` (`PROFILE_REQUEST_PART`). The host declares every other part in `composeProfile`'s `requestParts` (`ProfileRequestPartsDeclaration`), resolved and checked at composition by `resolveProfileRequestParts` (a `TypeError` names the fault):
+
+| Declaration | Meaning |
+|---|---|
+| `name` | A code (`REQUEST_PART_PATTERN`, ≤ 32 characters), unique, not `profile`; at most 15 (`MAX_REQUEST_PARTS` is 16 with Profile's) |
+| `coordinated` | An access request's bundle comes from the coordination port; otherwise an operator settles the part (`settleProfileRequestPart`) |
+| `holdable` | A legal hold may cover it; `profile` always may |
+| `directory` | At most one: the person's groups and standing. Profile settles it from its commands (§8.1); a request naming groups includes it, and without it naming groups is `groups-not-allowed` |
+| `defaults.<type>` | The parts a request of that type gets unless the operator names them; `profile` is always added. A missing type gets `profile`, and for `access` every coordinated part |
+
+Parts are validated against the declaration: a request naming an undeclared part is `unknown-part`, a hold naming a part not holdable or `recordProfileRequestPart` naming `profile`, the directory part or an undeclared one is `invalid-part`. Views and events list parts in declaration order, `profile` first; a part stored earlier and no longer declared still reads back, after the declared ones, alphabetically. Stored values are part names only (migration 0006 checks the grammar, not a list).
 
 | Type | Who opens it | Parts by default | What happens |
 |---|---|---|---|
-| `access` | The person (recent sign-in) or an operator | `profile`, `identity`, `authentication`, `authorisation`, `configuration` | Profile's own part, then each other member's through the coordination port, one at a time; each bundle sealed with the person's key. Complete when every part is answered; the archive is downloadable by the person for 7 days, then deleted |
-| `restriction` | The person (recent sign-in) or an operator | `profile` (and `identity` if named) | Every audience becomes `nobody` at once; Identity's part is done on `identity.paused` |
-| `correction` | An operator | `profile` (and `identity` with `groupIds`) | Identity's part is done when every group named is renamed (`group.renamed`); raised to operators at half the deadline |
-| `erasure` | An operator (the person closes their account) | `profile`, `identity`, `authentication`, `authorisation` | Done as closure completes: Identity's on `identity.closed` (and any renames), Profile's on its erasure, the others as the host's handler reports them (`recordProfileRequestPart`) |
-
-The `configuration` part is the configuration layer's settings for the person's own account, which it holds beside the IAM suite; the coordination port answers it like a member's, and `null` when the host composes no configuration layer. Erasure leaves it out: the configuration layer deletes an account's settings itself on `identity.closed`.
+| `access` | The person (recent sign-in) or an operator | `profile` and every coordinated part | Profile's own part, then each coordinated part through the coordination port, one at a time; each bundle sealed with the person's key. A coordinated part that fails stays pending and is retried by maintenance; others wait for an operator. Complete when every part is answered; the archive is downloadable by the person for 7 days, then deleted |
+| `restriction` | The person (recent sign-in) or an operator | `profile` | Every audience becomes `nobody` at once; the directory part, if named, is done on `recordProfilePause` |
+| `correction` | An operator | `profile` (and the directory part with `groupIds`) | The directory part is done when every group named is renamed (`recordProfileGroupRenamed`, or disposed); raised to operators at half the deadline |
+| `erasure` | An operator (the person closes their account) | `profile`, unless the host's defaults add parts | Done as closure completes: the directory part on `closeProfileSubject` (and any renames), Profile's on its erasure, the host's others as it reports them (`recordProfileRequestPart`) |
 
 A part is `pending`, `done`, `exempt` (with a reason code) or `held`; a request completes once every part is `done` or `exempt`. It is due one calendar month after opening (`PROFILE_REQUEST_POLICY`), and raised to operators (`profile.request-escalated`) 7 days before. Requests outlive an erasure, as identifiers, codes and times only.
 
-**Legal holds** are placed and released by operators, with a reason code and an end date at most 7 years ahead. They cover any of `profile`, `authentication` and `authorisation`, and defer only those parts' erasure, never access, correction or restriction, and never Identity's closure:
+**Legal holds** are placed and released by operators, with a reason code and an end date at most 7 years ahead. They cover `profile` and any holdable part, and defer only those parts' erasure, never access, correction or restriction, and never the closure itself:
 
-- On `identity.closed`, a hold covering Profile keeps the record, readable by no function (`getOwnProfile` and `exportProfileData` answer null; changes are `forbidden`), and `eraseProfile` is refused (`conflict`, `legal-hold`).
-- The host's closure handler reads `profileLegalHoldParts` and leaves the held parts of the other members alone.
-- When a hold ends (released, or its end date in maintenance), `profile.legal-hold-ended` names the parts no hold covers any more; Profile erases a closed person's record if Profile's part is among them, and the host's handler erases the others.
+- On `closeProfileSubject`, a hold covering Profile keeps the record, readable by no function (`getOwnProfile` and `exportProfileData` answer null; changes are `forbidden`), and `eraseProfile` is refused (`conflict`, `legal-hold`). Each other held part of an open erasure becomes `held`.
+- The host's closure handling reads `profileLegalHoldParts` and leaves its own held parts alone.
+- When a hold ends (released, or its end date in maintenance), `profile.legal-hold-ended` names the parts no hold covers any more; Profile erases a closed person's record if Profile's part is among them, the host's released parts become `pending` again, and the host erases them.
 
 ## 15. Contact-detail verification
 
@@ -296,7 +321,7 @@ Profile reads the current time from the clock the host supplies (`composeProfile
 
 Profile's part of iam-integration's group deletion and retention processes ([resources](../RESOURCES.md)).
 
-**A deleted group.** On Identity's `group.deleted` with `disposal: 'due'`, or on `group.disposal-due` once a hold on the group or its tenant has ended (`group.deleted` with `disposal: 'deferred'` is ignored), Profile removes the group's departure records and, once none is left, its pseudonym counter; it keeps the departure of anyone a legal hold on Profile's part covers. A data-subject request naming the group no longer needs its rename: the group's part of it is done. It writes `profile.group-disposed`, which the host relays to Identity as Profile's confirmation.
+**A deleted group.** When the host calls `disposeProfileGroup` (only once the group's disposal is due, after any hold on the group or its tenant has ended), Profile removes the group's departure records and, once none is left, its pseudonym counter; it keeps the departure of anyone a legal hold on Profile's part covers. A data-subject request naming the group no longer needs its rename: the group's part of it is done. It writes `profile.group-disposed`, which the host relays as Profile's confirmation.
 
 **Re-homing.** Profile keeps every record in the one store the host composes, whatever the person's home tenant, so `identity.rehomed` needs nothing from it. A host that keeps people's records in different data regions composes one Profile per region, and moving a record between them is the host's migration; Profile does not yet place records by region.
 

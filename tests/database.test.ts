@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { DisclosureContext, IdentityEventLike, ProfileDisclosureContextPort, ProfileEvent, ProfileKeyWrapper } from '../contracts'
-import { DEFAULT_DISCLOSURE_SETTINGS, ProfileFailure } from '../contracts'
+import type { DisclosureContext, ProfileDisclosureContextPort, ProfileEvent, ProfileKeyWrapper } from '../contracts'
+import { DEFAULT_DISCLOSURE_SETTINGS, ProfileFailure, resolveProfileRequestParts } from '../contracts'
 import { PROFILE_MIGRATIONS, runProfileMigrations } from '../server/database/migrations'
 import { aad, open, uuidv7 } from '../server/internal/crypto'
 import { createService } from '../server/internal/service'
@@ -22,14 +22,14 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
   let drop: () => Promise<void>
   const role = `profile_runtime_${randomBytes(4).toString('hex')}`
 
-  // A stand-in for Identity's disclosure-context port: relationships and standings set per test.
+  // A stand-in for the host's disclosure-context port: relationships and standings set per test.
   const relationships = new Map<string, Omit<Subject, 'subjectId'>>()
   let departurePolicy: DisclosureContext['departurePolicy'] = null
   let failing: 'reject' | 'malformed' | null = null
   const disclosure: ProfileDisclosureContextPort = {
     async describe(request, options) {
       expect(options.consistency).toBe('bounded')
-      if (failing === 'reject') throw new Error('identity down')
+      if (failing === 'reject') throw new Error('directory down')
       if (failing === 'malformed') return { viewerId: request.viewerId, subjects: 'oops' } as never
       return {
         viewerId: request.viewerId,
@@ -44,13 +44,23 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
   }
 
   let keys: ProfileKeyWrapper = createLocalProfileKeyWrapper({ keys: { v1: master(1) }, current: 'v1' })
-  const service = () => createService({ pool: runtime, schema: 'profile', keys, disclosure: () => disclosure })
+  // The host's parts beside Profile's own: named by the host, unknown to Profile but by this declaration.
+  const hostParts = resolveProfileRequestParts({
+    parts: [
+      { name: 'directory', coordinated: true, directory: true },
+      { name: 'sign-in', coordinated: true, holdable: true },
+      { name: 'permissions', coordinated: true, holdable: true },
+      { name: 'settings', coordinated: true },
+    ],
+    defaults: { erasure: ['directory', 'sign-in', 'permissions'] },
+  })
+  const base = () => ({ pool: runtime, schema: 'profile', keys, disclosure: () => disclosure, requestParts: () => hostParts })
+  const service = () => createService(base())
 
   const ids = { viewer: uuidv7(), ada: uuidv7(), grace: uuidv7(), group: uuidv7(), other: uuidv7() }
-  const identityEvent = (type: string, data: Record<string, unknown>): IdentityEventLike =>
-    ({ eventId: uuidv7(), type, occurredAt: new Date().toISOString(), correlationId: correlationId(), data })
-  const provision = (identityId: string, kind = 'person') =>
-    service().applyIdentityEvent(identityEvent('identity.provisioned', { identityId, kind, homeTenantId: uuidv7(), personalGroupId: uuidv7() }))
+  const command = () => ({ commandId: uuidv7(), correlationId: correlationId() })
+  const provision = (subjectId: string) => service().provisionRecord({ ...command(), subjectId })
+  const depart = (subjectId: string, groupId: string) => service().recordDeparture({ ...command(), subjectId, groupId, endedAt: new Date().toISOString() })
   const outbox = async () => (await admin.query('select "event" from "profile"."outbox" order by "sequence"')).rows.map(row => row.event as ProfileEvent)
   const names = (subjectIds: string[], extra: { groupId?: string, purpose?: 'attribution' | 'listing' } = {}) =>
     service().displayNames({ viewerId: ids.viewer, subjectIds, groupId: extra.groupId ?? null, purpose: extra.purpose ?? 'listing' })
@@ -96,18 +106,20 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     expect(bypass.rows[0]).toEqual({ rolbypassrls: false, rolsuper: false })
   })
 
-  it('creates an empty record for each new person, once, and none for other kinds of identity', async () => {
+  it('creates an empty record for each person the host provisions, once per command id', async () => {
     expect(await provision(ids.ada)).toBe('applied')
-    const event = identityEvent('identity.provisioned', { identityId: ids.grace, kind: 'person' })
-    expect(await service().applyIdentityEvent(event)).toBe('applied')
-    expect(await service().applyIdentityEvent(event)).toBe('duplicate')
-    const robot = uuidv7()
-    expect(await provision(robot, 'service')).toBe('applied')
+    const provisioning = { ...command(), subjectId: ids.grace }
+    expect(await service().provisionRecord(provisioning)).toBe('applied')
+    expect(await service().provisionRecord(provisioning)).toBe('duplicate')
     expect(await service().own({ subjectId: ids.ada })).toEqual({ attributes: {}, settings: DEFAULT_DISCLOSURE_SETTINGS, version: 1 })
     const records = await admin.query('select "identity_id" from "profile"."record"')
     expect(records.rows.map(row => row.identity_id).sort()).toEqual([ids.ada, ids.grace].sort())
     expect((await outbox()).filter(e => e.type === 'profile.created').map(e => e.data.identityId).sort()).toEqual([ids.ada, ids.grace].sort())
-    expect(await service().applyIdentityEvent(identityEvent('group.created', { groupId: ids.group }))).toBe('ignored')
+    // Commands are strict: an unknown field, a missing id or a bad identifier is refused, and nothing is recorded.
+    await expect(service().provisionRecord({ ...command(), subjectId: uuidv7(), kind: 'person' })).rejects.toMatchObject({ code: 'validation-failed' })
+    await expect(service().provisionRecord({ correlationId: correlationId(), subjectId: uuidv7() })).rejects.toMatchObject({ code: 'validation-failed' })
+    await expect(service().recordDeparture({ ...command(), subjectId: 'ada@example.com', groupId: ids.group, endedAt: new Date().toISOString() })).rejects.toMatchObject({ code: 'validation-failed' })
+    expect((await admin.query('select count(*)::int as n from "profile"."record"')).rows[0].n).toBe(2)
   })
 
   it('keeps every value encrypted with the person\'s own key, and contact details unverified', async () => {
@@ -184,7 +196,7 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     expect(await names([ids.ada], { purpose: 'attribution' })).toEqual([{ subjectId: ids.ada, displayName: { kind: 'hidden' } }])
   })
 
-  it('fails closed when Identity\'s port fails or answers malformed, and refuses bad input', async () => {
+  it('fails closed when the disclosure-context port fails or answers malformed, and refuses bad input', async () => {
     failing = 'reject'
     await expect(names([ids.ada])).rejects.toMatchObject({ code: 'unavailable' })
     failing = 'malformed'
@@ -196,8 +208,8 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
   })
 
   it('applies the departure data policy with the name kept when the person left', async () => {
-    await service().applyIdentityEvent(identityEvent('membership.ended', { membershipId: uuidv7(), identityId: ids.ada, groupId: ids.group, endReason: 'left', reasonCode: null }))
-    await service().applyIdentityEvent(identityEvent('membership.ended', { membershipId: uuidv7(), identityId: ids.grace, groupId: ids.group, endReason: 'left', reasonCode: null }))
+    await depart(ids.ada, ids.group)
+    await depart(ids.grace, ids.group)
     // A later change of name does not change how the leaver is attributed.
     await service().update({ subjectId: ids.ada, correlationId: correlationId(), changes: { name: 'Augusta Ada King' } })
     relationships.set(ids.ada, { relationship: 'former-member', standing: 'visible' })
@@ -228,7 +240,7 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
 
   it('anonymises every departure for someone who chose it in advance', async () => {
     await service().setDisclosure({ subjectId: ids.grace, correlationId: correlationId(), settings: { ...DEFAULT_DISCLOSURE_SETTINGS, anonymiseOnDeparture: true } })
-    await service().applyIdentityEvent(identityEvent('membership.ended', { membershipId: uuidv7(), identityId: ids.grace, groupId: ids.other, endReason: 'left', reasonCode: null }))
+    await depart(ids.grace, ids.other)
     relationships.set(ids.grace, { relationship: 'former-member', standing: 'visible' })
     departurePolicy = { attribution: 'keep-name' }
     expect(await names([ids.grace], { groupId: ids.other, purpose: 'attribution' })).toEqual([{ subjectId: ids.grace, displayName: { kind: 'former-member' } }])
@@ -246,7 +258,9 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     expect(backup.key_version).toBe('v1')
 
     // Ada's account is closed: her record, departures and key are erased, and never recreated.
-    expect(await service().applyIdentityEvent(identityEvent('identity.closed', { identityId: ids.ada, personalGroupId: uuidv7() }))).toBe('applied')
+    const closure = { ...command(), subjectId: ids.ada }
+    expect(await service().closeSubject(closure)).toBe('applied')
+    expect(await service().closeSubject(closure)).toBe('duplicate')
     expect((await outbox()).at(-1)).toMatchObject({ type: 'profile.anonymised', data: { identityId: ids.ada, reasonCode: 'identity-closed' } })
     for (const table of ['subject_key', 'record', 'departure']) {
       expect((await admin.query(`select 1 from "profile"."${table}" where "identity_id" = $1`, [ids.ada])).rows).toEqual([])
@@ -284,37 +298,44 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     const held = uuidv7()
     await provision(held)
     await service().update({ subjectId: held, correlationId: correlationId(), changes: { name: 'Hedy Held' } })
-    const hold = await service().placeHold({ identityId: held, parts: ['profile', 'authentication'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 86_400_000).toISOString(), correlationId: correlationId() })
-    expect(hold).toMatchObject({ identityId: held, parts: ['profile', 'authentication'], endedAt: null })
-    expect(await service().heldParts({ identityId: held })).toEqual(['profile', 'authentication'])
+    const hold = await service().placeHold({ identityId: held, parts: ['profile', 'sign-in'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 86_400_000).toISOString(), correlationId: correlationId() })
+    expect(hold).toMatchObject({ identityId: held, parts: ['profile', 'sign-in'], endedAt: null })
+    expect(await service().heldParts({ identityId: held })).toEqual(['profile', 'sign-in'])
+    // Only Profile's part and the parts the host declared holdable can be held.
+    for (const parts of [['directory'], ['settings'], ['undeclared']]) {
+      await expect(service().placeHold({ identityId: held, parts, reasonCode: 'litigation', endsAt: new Date(Date.now() + 86_400_000).toISOString(), correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    }
     await expect(service().erase({ identityId: held, reasonCode: 'person-request', correlationId: correlationId() })).rejects.toMatchObject({ code: 'conflict' })
     await expect(service().placeHold({ identityId: held, parts: ['profile'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 8 * 366 * 86_400_000).toISOString(), correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
 
     const erasure = await service().openRequest({ subjectId: held, type: 'erasure', origin: 'operator', reasonCode: 'verified-by-post', correlationId: correlationId() })
-    expect(erasure.parts.map(part => part.part)).toEqual(['profile', 'identity', 'authentication', 'authorisation'])
+    expect(erasure.parts.map(part => part.part)).toEqual(['profile', 'directory', 'sign-in', 'permissions'])
     await expect(service().openRequest({ subjectId: held, type: 'erasure', origin: 'person', correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
     await expect(service().openRequest({ subjectId: held, type: 'erasure', origin: 'operator', correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
 
-    // Identity closes the identity: the record stays, but nothing reads it.
-    await service().applyIdentityEvent(identityEvent('identity.closed', { identityId: held }))
+    // The host closes the account: the record stays, but nothing reads it.
+    await service().closeSubject({ ...command(), subjectId: held })
     expect((await admin.query('select 1 from "profile"."record" where "identity_id" = $1', [held])).rows).toHaveLength(1)
     expect(await service().own({ subjectId: held })).toBeNull()
     expect(await service().exportData({ subjectId: held })).toBeNull()
     await expect(service().update({ subjectId: held, correlationId: correlationId(), changes: { name: 'Back' } })).rejects.toMatchObject({ code: 'forbidden' })
     const status = async () => Object.fromEntries((await service().getRequest({ requestId: erasure.requestId }))!.parts.map(part => [part.part, part.status]))
-    expect(await status()).toEqual({ profile: 'held', identity: 'done', authentication: 'held', authorisation: 'pending' })
+    expect(await status()).toEqual({ profile: 'held', directory: 'done', 'sign-in': 'held', permissions: 'pending' })
 
-    // The host's handler erased Authorisation's part, which no hold covers.
-    await service().recordRequestPart({ identityId: held, part: 'authorisation', correlationId: correlationId() })
-    expect((await status()).authorisation).toBe('done')
+    // The host erased its `permissions` part, which no hold covers. Profile's and the directory part are not the host's to report.
+    for (const part of ['profile', 'directory', 'undeclared']) {
+      await expect(service().recordRequestPart({ identityId: held, part, correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    }
+    await service().recordRequestPart({ identityId: held, part: 'permissions', correlationId: correlationId() })
+    expect((await status()).permissions).toBe('done')
 
     // The hold is released: Profile erases now, and tells the host which parts to erase.
     await service().releaseHold({ holdId: hold.holdId, reasonCode: 'case-closed', correlationId: correlationId() })
     expect((await admin.query('select 1 from "profile"."subject_key" where "identity_id" = $1', [held])).rows).toEqual([])
     const ended = (await outbox()).filter(e => e.type === 'profile.legal-hold-ended').at(-1)
-    expect(ended?.data).toMatchObject({ holdId: hold.holdId, identityId: held, parts: ['profile', 'authentication'], released: ['profile', 'authentication'], identityClosed: true, reasonCode: 'case-closed' })
-    expect(await status()).toEqual({ profile: 'done', identity: 'done', authentication: 'pending', authorisation: 'done' })
-    await service().recordRequestPart({ identityId: held, part: 'authentication', correlationId: correlationId() })
+    expect(ended?.data).toMatchObject({ holdId: hold.holdId, identityId: held, parts: ['profile', 'sign-in'], released: ['profile', 'sign-in'], identityClosed: true, reasonCode: 'case-closed' })
+    expect(await status()).toEqual({ profile: 'done', directory: 'done', 'sign-in': 'pending', permissions: 'done' })
+    await service().recordRequestPart({ identityId: held, part: 'sign-in', correlationId: correlationId() })
     expect(await service().getRequest({ requestId: erasure.requestId })).toMatchObject({ status: 'completed' })
     expect((await outbox()).filter(e => e.type === 'profile.request-completed').at(-1)?.data).toMatchObject({ requestId: erasure.requestId, identityId: held })
     await expect(service().releaseHold({ holdId: hold.holdId, reasonCode: 'case-closed', correlationId: correlationId() })).rejects.toMatchObject({ code: 'conflict' })
@@ -331,36 +352,113 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     const opened = await service().openRequest({ subjectId: person, type: 'correction', origin: 'operator', reasonCode: 'verified-by-email', groupIds: [groupA, groupB], correlationId: correlationId() })
     expect(opened).toMatchObject({ status: 'open', groupIds: [groupA, groupB].sort() })
     await service().settlePart({ requestId: opened.requestId, part: 'profile', outcome: 'done', correlationId: correlationId() })
-    await service().applyIdentityEvent(identityEvent('group.renamed', { groupId: groupA }))
+    const renamedA = { ...command(), groupId: groupA }
+    expect(await service().recordGroupRenamed(renamedA)).toBe('applied')
+    expect(await service().recordGroupRenamed(renamedA)).toBe('duplicate')
     expect((await service().getRequest({ requestId: opened.requestId }))?.status).toBe('open')
 
     // Half the deadline passes with group B unrenamed: operators are told, once.
     const later = new Date(Date.parse(opened.openedAt) + 20 * 86_400_000)
-    const atLater = () => createService({ pool: runtime, schema: 'profile', keys, disclosure: () => disclosure, now: () => later })
+    const atLater = () => createService({ ...base(), now: () => later })
     await atLater().maintain()
     await atLater().maintain()
     const escalations = (await outbox()).filter(e => e.type === 'profile.request-escalated' && e.data.requestId === opened.requestId)
     expect(escalations.map(e => e.data.reasonCode)).toEqual(['group-rename-overdue'])
 
-    await service().applyIdentityEvent(identityEvent('group.renamed', { groupId: groupB }))
+    await service().recordGroupRenamed({ ...command(), groupId: groupB })
     expect(await service().getRequest({ requestId: opened.requestId })).toMatchObject({ status: 'completed' })
   })
 
   it('lets an operator exempt a part with a reason code, and ends holds on their end date', async () => {
     const person = uuidv7()
     await provision(person)
-    const opened = await service().openRequest({ subjectId: person, type: 'restriction', parts: ['identity'], origin: 'operator', reasonCode: 'verified-by-post', correlationId: correlationId() })
-    expect(opened.parts.map(part => `${part.part}:${part.status}`)).toEqual(['profile:done', 'identity:pending'])
-    await expect(service().settlePart({ requestId: opened.requestId, part: 'identity', outcome: 'exempt', correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
-    const settled = await service().settlePart({ requestId: opened.requestId, part: 'identity', outcome: 'exempt', reasonCode: 'legitimate-grounds', correlationId: correlationId() })
-    expect(settled).toMatchObject({ status: 'completed', parts: [expect.objectContaining({ part: 'profile', status: 'done' }), expect.objectContaining({ part: 'identity', status: 'exempt', reasonCode: 'legitimate-grounds' })] })
+    const opened = await service().openRequest({ subjectId: person, type: 'restriction', parts: ['settings'], origin: 'operator', reasonCode: 'verified-by-post', correlationId: correlationId() })
+    expect(opened.parts.map(part => `${part.part}:${part.status}`)).toEqual(['profile:done', 'settings:pending'])
+    await expect(service().settlePart({ requestId: opened.requestId, part: 'settings', outcome: 'exempt', correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    const settled = await service().settlePart({ requestId: opened.requestId, part: 'settings', outcome: 'exempt', reasonCode: 'legitimate-grounds', correlationId: correlationId() })
+    expect(settled).toMatchObject({ status: 'completed', parts: [expect.objectContaining({ part: 'profile', status: 'done' }), expect.objectContaining({ part: 'settings', status: 'exempt', reasonCode: 'legitimate-grounds' })] })
 
-    const hold = await service().placeHold({ identityId: person, parts: ['authorisation'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 60_000).toISOString(), correlationId: correlationId() })
+    const hold = await service().placeHold({ identityId: person, parts: ['permissions'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 60_000).toISOString(), correlationId: correlationId() })
     const after = new Date(Date.now() + 120_000)
-    const result = await createService({ pool: runtime, schema: 'profile', keys, disclosure: () => disclosure, now: () => after }).maintain()
+    const result = await createService({ ...base(), now: () => after }).maintain()
     expect(result.holdsEnded).toBeGreaterThanOrEqual(1)
     expect((await service().listHolds({ identityId: person }))[0]).toMatchObject({ holdId: hold.holdId, endedAt: expect.any(String) })
-    expect((await outbox()).filter(e => e.type === 'profile.legal-hold-ended').at(-1)?.data).toMatchObject({ holdId: hold.holdId, released: ['authorisation'], identityClosed: false, reasonCode: 'expired' })
+    expect((await outbox()).filter(e => e.type === 'profile.legal-hold-ended').at(-1)?.data).toMatchObject({ holdId: hold.holdId, released: ['permissions'], identityClosed: false, reasonCode: 'expired' })
+  })
+
+  it('completes the directory part of a restriction when the host records a pause, once per command id', async () => {
+    const person = uuidv7()
+    await provision(person)
+    const opened = await service().openRequest({ subjectId: person, type: 'restriction', parts: ['directory'], origin: 'operator', reasonCode: 'verified-by-post', correlationId: correlationId() })
+    expect(opened.parts.map(part => `${part.part}:${part.status}`)).toEqual(['profile:done', 'directory:pending'])
+    const pause = { ...command(), subjectId: person }
+    expect(await service().recordPause(pause)).toBe('applied')
+    expect(await service().recordPause(pause)).toBe('duplicate')
+    expect(await service().getRequest({ requestId: opened.requestId })).toMatchObject({ status: 'completed', parts: [expect.objectContaining({ part: 'profile' }), expect.objectContaining({ part: 'directory', status: 'done' })] })
+    expect((await outbox()).filter(e => e.type === 'profile.request-completed').at(-1)?.data).toMatchObject({ requestId: opened.requestId, parts: [{ part: 'profile', status: 'done' }, { part: 'directory', status: 'done' }] })
+  })
+
+  it('accepts only the parts the host declared, and without a declaration only its own', async () => {
+    const person = uuidv7()
+    await provision(person)
+    const operator = { subjectId: person, origin: 'operator' as const, reasonCode: 'verified-by-post' }
+    await expect(service().openRequest({ ...operator, type: 'restriction', parts: ['undeclared'], correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    await expect(service().openRequest({ ...operator, type: 'restriction', parts: ['Not A Part'], correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    // Naming groups adds the directory part; a correction of the directory needs groups.
+    const named = await service().openRequest({ ...operator, type: 'correction', groupIds: [uuidv7()], correlationId: correlationId() })
+    expect(named.parts.map(part => part.part)).toEqual(['profile', 'directory'])
+    await expect(service().openRequest({ ...operator, type: 'correction', parts: ['directory'], correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+
+    // Without a declaration: Profile's part only, no groups, and no coordination port needed for access.
+    const alone = createService({ pool: runtime, schema: 'profile', keys, disclosure: () => disclosure })
+    const access = await alone.openRequest({ subjectId: person, type: 'access', origin: 'person', correlationId: correlationId() })
+    expect(access).toMatchObject({ status: 'completed', parts: [expect.objectContaining({ part: 'profile', status: 'done' })] })
+    await expect(alone.openRequest({ ...operator, type: 'correction', groupIds: [uuidv7()], correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    await expect(alone.openRequest({ ...operator, type: 'erasure', parts: ['sign-in'], correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    await expect(alone.placeHold({ identityId: person, parts: ['sign-in'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 86_400_000).toISOString(), correlationId: correlationId() })).rejects.toMatchObject({ code: 'validation-failed' })
+    // A pause or a rename with no directory part changes no request, and is still recorded once.
+    const pause = { ...command(), subjectId: person }
+    expect(await alone.recordPause(pause)).toBe('applied')
+    expect(await alone.recordPause(pause)).toBe('duplicate')
+    // Coordinated parts without the coordination port refuse an access request before recording anything.
+    const before = (await admin.query('select count(*)::int as n from "profile"."request"')).rows[0].n
+    await expect(service().openRequest({ subjectId: person, type: 'access', origin: 'person', correlationId: correlationId() })).rejects.toMatchObject({ code: 'unavailable' })
+    expect((await admin.query('select count(*)::int as n from "profile"."request"')).rows[0].n).toBe(before)
+  })
+
+  it('keeps part names stored before host-declared parts valid and readable after migration 0006', async () => {
+    const schema = `legacy_${randomBytes(4).toString('hex')}`
+    await admin.query(`create schema "${schema}"`)
+    await admin.query(`create table "${schema}"."schema_migration" ("id" text primary key, "applied_at" timestamptz not null default now())`)
+    const released = PROFILE_MIGRATIONS.filter(m => m.id < '0006')
+    for (const migration of released) {
+      await admin.query(migration.sql.replaceAll('{{schema}}', `"${schema}"`))
+      await admin.query(`insert into "${schema}"."schema_migration" ("id") values ($1)`, [migration.id])
+    }
+    const person = uuidv7()
+    const requestId = uuidv7()
+    await admin.query(`insert into "${schema}"."request" ("request_id", "identity_id", "type", "origin", "correlation_id", "opened_at", "due_at") values ($1, $2, 'access', 'person', $3, now(), now() + interval '30 days')`, [requestId, person, correlationId()])
+    for (const part of ['profile', 'identity', 'authentication', 'authorisation', 'configuration']) {
+      await admin.query(`insert into "${schema}"."request_part" ("request_id", "part", "updated_at") values ($1, $2, now())`, [requestId, part])
+    }
+    await admin.query(`insert into "${schema}"."legal_hold" ("hold_id", "identity_id", "parts", "reason_code", "placed_at", "ends_at") values ($1, $2, array['profile', 'authentication', 'authorisation'], 'litigation', now(), now() + interval '1 day')`, [uuidv7(), person])
+
+    expect(await runProfileMigrations(admin, schema)).toEqual(PROFILE_MIGRATIONS.filter(m => m.id >= '0006').map(m => m.id))
+    await admin.query(`grant usage on schema "${schema}" to "${role}"`)
+    await admin.query(`grant select on all tables in schema "${schema}" to "${role}"`)
+    const legacy = createService({ ...base(), schema })
+    const view = await legacy.getRequest({ requestId })
+    // Declared parts first in declaration order, then stored parts no longer declared, alphabetically.
+    expect(view?.parts.map(part => part.part)).toEqual(['profile', 'authentication', 'authorisation', 'configuration', 'identity'])
+    expect((await legacy.listHolds({ identityId: person }))[0]?.parts).toEqual(['profile', 'authentication', 'authorisation'])
+    // The relaxed checks still refuse what is not a part name.
+    for (const part of ['Profile', 'two words', 'x'.repeat(33), '']) {
+      await expect(admin.query(`insert into "${schema}"."request_part" ("request_id", "part", "updated_at") values ($1, $2, now())`, [requestId, part])).rejects.toThrow()
+    }
+    for (const parts of [[], ['profile', 'Bad'], Array.from({ length: 17 }, (_, i) => `p${i}`)]) {
+      await expect(admin.query(`insert into "${schema}"."legal_hold" ("hold_id", "identity_id", "parts", "reason_code", "placed_at", "ends_at") values ($1, $2, $3, 'litigation', now(), now() + interval '1 day')`, [uuidv7(), person, parts])).rejects.toThrow()
+    }
+    await admin.query(`drop schema "${schema}" cascade`)
   })
 
   it('fails closed when the key port fails', async () => {
@@ -381,21 +479,21 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
     for (const person of [kept, gone]) {
       await provision(person)
       await service().update({ subjectId: person, correlationId: correlationId(), changes: { name: 'Someone Leaving' } })
-      await service().applyIdentityEvent(identityEvent('membership.ended', { membershipId: uuidv7(), identityId: person, groupId: doomed, endReason: 'left', reasonCode: null }))
+      await depart(person, doomed)
     }
     await service().placeHold({ identityId: kept, parts: ['profile'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 86_400_000).toISOString(), correlationId: correlationId() })
     const departures = async () => (await admin.query('select "identity_id" from "profile"."departure" where "group_id" = $1', [doomed])).rows.map(row => row.identity_id)
-    // Deferred by a hold on the group: nothing yet.
-    expect(await service().applyIdentityEvent(identityEvent('group.deleted', { groupId: doomed, tenantId: uuidv7(), kind: 'standard', disposal: 'deferred', changeId: null }))).toBe('ignored')
     expect((await departures()).sort()).toEqual([kept, gone].sort())
-    expect(await service().applyIdentityEvent(identityEvent('group.disposal-due', { groupId: doomed, tenantId: uuidv7() }))).toBe('applied')
+    const disposal = { ...command(), groupId: doomed }
+    expect(await service().disposeGroup(disposal)).toBe('applied')
+    expect(await service().disposeGroup(disposal)).toBe('duplicate')
     expect(await departures()).toEqual([kept])
     expect((await outbox()).filter(e => e.type === 'profile.group-disposed').at(-1)).toMatchObject({ data: { groupId: doomed, departures: 1, heldDepartures: 1 } })
   })
 
   it('deletes delivered events, old completed requests and old ended holds under retention, never a held person\'s request', async () => {
     let at = new Date()
-    const timed = () => createService({ pool: runtime, schema: 'profile', keys, disclosure: () => disclosure, now: () => at })
+    const timed = () => createService({ ...base(), now: () => at })
     await timed().relayOutbox({ limit: 1000, publish: async () => {} })
     const person = uuidv7()
     await provision(person)
@@ -403,7 +501,7 @@ describe.skipIf(!hasDatabase)('Profile storage on PostgreSQL', () => {
       values ($1, $2, 'restriction', 'person', 'completed', $3, now() - interval '900 days', now() - interval '870 days', now() - interval '880 days'),
              ($4, $5, 'restriction', 'person', 'completed', $3, now() - interval '900 days', now() - interval '870 days', now() - interval '880 days')`,
     [uuidv7(), person, correlationId(), uuidv7(), ids.ada])
-    await timed().placeHold({ identityId: ids.ada, parts: ['authentication'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 100 * 86_400_000).toISOString(), correlationId: correlationId() })
+    await timed().placeHold({ identityId: ids.ada, parts: ['sign-in'], reasonCode: 'litigation', endsAt: new Date(Date.now() + 100 * 86_400_000).toISOString(), correlationId: correlationId() })
     at = new Date(Date.now() + 40 * 86_400_000)
     const { retention } = await timed().maintain()
     expect(retention.outboxEvents).toBeGreaterThan(0)

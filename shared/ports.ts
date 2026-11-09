@@ -1,13 +1,14 @@
 import type { ProfileSubject } from './api'
 import type { DisclosureContext } from './disclosure'
 import type { ProfileEvent } from './events'
-import type { CoordinatedPart, ProfileRetentionInput } from './requests'
+import type { ProfileRequestPartsDeclaration, ProfileRetentionInput, RequestPart } from './requests'
 import type { VerifiableAttribute } from './verification'
 
 /**
  * Ports the host supplies (CONTRACT.md, "Host passes"). Declared
- * structurally, so the contract depends on no driver, key service or other
- * capability's package.
+ * structurally and in Profile's own terms, so the contract depends on no
+ * driver, key service or other capability. The host adapts what it has to
+ * these shapes.
  */
 
 /** Structural shape of a `pg` pool. */
@@ -59,14 +60,21 @@ export interface ProfileKeyWrapper {
   unwrap(key: WrappedProfileKey, context: { identityId: string }): Promise<Uint8Array>
 }
 
+/**
+ * How fresh a directory answer must be: `strong` reads the latest state;
+ * `bounded` may lag by the directory's own short, documented bound.
+ */
 export interface DirectoryReadOptions {
   consistency: 'strong' | 'bounded'
 }
 
 /**
- * Identity's disclosure-context port, as the host passes it in (Identity
- * contract §10.3). Normally read `bounded`. A failure rejects, and Profile
- * then shows nothing rather than something stale.
+ * Disclosure-context port: the host's directory answers, for one viewer and
+ * up to 200 people, how the viewer is related to each person, each person's
+ * standing, and the group context's departure policy (`DisclosureContext`).
+ * Profile asks at every lookup, normally `bounded`, and never caches the
+ * answer. A failure rejects, and Profile then shows nothing rather than
+ * something stale.
  */
 export interface ProfileDisclosureContextPort {
   describe(
@@ -75,43 +83,34 @@ export interface ProfileDisclosureContextPort {
   ): Promise<DisclosureContext>
 }
 
-/** An Identity event as the host relays it. Profile reads only what it handles. */
-export interface IdentityEventLike {
-  eventId: string
-  type: string
-  occurredAt: string
-  correlationId: string
-  data: Record<string, unknown>
-}
-
 /** Where `relayProfileOutbox` delivers events. A rejection leaves the event to be relayed again. */
 export type ProfileEventPublisher = (event: ProfileEvent) => Promise<void>
 
 /**
- * Subject-resolver port, supplied from Authentication through the host: the
- * signed-in person for an HTTP request, or null. A failure rejects, and the
- * endpoint answers `unavailable`.
+ * Subject-resolver port: the signed-in person for an HTTP request, from the
+ * host's sign-in, or null. A failure rejects, and the endpoint answers
+ * `unavailable`.
  */
 export interface ProfileSubjectResolver {
   resolve(event: unknown): Promise<ProfileSubject | null>
 }
 
 /**
- * Coordination port for data-subject requests (docs/contracts.md §14), from
- * iam-integration's `profileRequestCoordinatorFromMembers`: one other
- * member's part of an access request, as a machine-readable bundle, or null
- * when that member holds nothing for the identity. A member's failure
- * rejects; Profile keeps that part pending and retries it.
+ * Coordination port for data-subject requests (docs/contracts.md §14): one
+ * coordinated part of an access request (a part the host declared
+ * `coordinated` in `requestParts`), as a machine-readable bundle, or null
+ * when nothing is held for the person there. A failure rejects; Profile
+ * keeps that part pending and retries it.
  */
 export interface ProfileRequestCoordinator {
-  exportPart(input: { identityId: string, part: CoordinatedPart, correlationId: string }): Promise<unknown | null>
+  exportPart(input: { identityId: string, part: RequestPart, correlationId: string }): Promise<unknown | null>
 }
 
 /**
- * Access-decision port, from iam-integration's
- * `profileAccessDecisionFromAuthorisation`: whether the signed-in viewer
- * holds one of Profile's permissions on a group now. Any refusal is false; a
- * failure rejects, and Profile shows only what it shows anyone.
+ * Access-decision port: whether the signed-in viewer holds one of Profile's
+ * permissions (`PROFILE_PERMISSIONS`) on a group now, as the host's access
+ * decision answers. Any refusal is false; a failure rejects, and Profile
+ * shows only what it shows anyone.
  */
 export interface ProfileAccessDecision {
   allows(input: { subject: ProfileSubject, permission: string, groupId: string }): Promise<boolean>
@@ -139,8 +138,7 @@ export interface ProfileNotifier {
 }
 
 /**
- * Clock port (docs/contracts.md §16, iam-integration architecture §7): the
- * current time. Optional; without it Profile uses the system clock. Every
+ * Clock port (docs/contracts.md §16): the current time. Optional; without it Profile uses the system clock. Every
  * time Profile keeps or judges comes from it: timestamps, events'
  * `occurredAt`, expiries, due dates, hold ends and whether a sign-in is
  * recent. Trusted like a key, since it can make holds or expiries end
@@ -172,4 +170,6 @@ export interface ProfileComposition {
   clock?: ProfileClock
   /** The defaults without it. */
   retention?: ProfileRetentionInput
+  /** The parts of data-subject requests beside Profile's own; without it, Profile's part only. */
+  requestParts?: ProfileRequestPartsDeclaration
 }

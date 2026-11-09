@@ -1,7 +1,7 @@
 /**
- * Profile's permissions, in Authorisation's `<resource>:<action>` grammar,
- * for the host to pass to `provideAuthorisationPermissions` and to name in
- * the built-in roles (iam-integration's `rolesWithIdentityPermissions`).
+ * Profile's own declaration of the permissions it asks the access-decision
+ * port about, named `<resource>:<action>`. The host registers them with its
+ * access decision, in whatever form that takes, and decides who holds them.
  * Each acts on a group: the resource is the group itself.
  */
 export interface ProfilePermissionDefinition {
@@ -14,8 +14,8 @@ export interface ProfilePermissionDefinition {
 /**
  * A suspended member's name, to the administrators of a group they belong
  * to. `high`, because it discloses personal data that is otherwise hidden:
- * Authorisation's wildcards never cover it, so `member` and `viewer` never
- * hold it, and it needs `aal2`.
+ * the host must grant it only by name (never through a wildcard or an
+ * ordinary member's or viewer's role), and only at `aal2`.
  */
 export const PROFILE_SUSPENDED_PEOPLE_PERMISSION = 'profile.suspended-people:view'
 

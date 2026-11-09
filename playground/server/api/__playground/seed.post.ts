@@ -3,7 +3,7 @@ import { createError, defineEventHandler } from 'h3'
 import { DEFAULT_DISCLOSURE_SETTINGS } from '../../../../contracts'
 import { playground } from '../../plugins/composition'
 
-/** A UUIDv7, as Identity issues them. */
+/** A UUIDv7, as a host's directory issues them. */
 function uuidv7(): string {
   const bytes = randomBytes(16)
   bytes.writeUIntBE(Date.now(), 0, 6)
@@ -14,7 +14,7 @@ function uuidv7(): string {
 }
 
 /**
- * Test mode only: a fresh scenario, standing in for Identity's directory.
+ * Test mode only: a fresh scenario, standing in for the host's directory.
  * - `viewer` has no record yet;
  * - `colleague` shares `group` with the viewer and discloses their name and
  *   contact email to the group;
@@ -48,22 +48,9 @@ export default defineEventHandler(async () => {
   playground.standings.set(paused, 'paused')
   playground.relationships.set(`${viewer}|${leaver}|${group}`, 'former-member')
   playground.departurePolicies.set(group, 'keep-name')
-  // The leaver's departure, as Identity announces it.
-  await applyProfileIdentityEvent({
-    eventId: uuidv7(),
-    type: 'membership.ended',
-    occurredAt: new Date().toISOString(),
-    correlationId: randomUUID(),
-    data: { identityId: leaver, groupId: group, membershipId: uuidv7(), reason: 'left' },
-  })
-
-  await applyProfileIdentityEvent({
-    eventId: uuidv7(),
-    type: 'membership.ended',
-    occurredAt: new Date().toISOString(),
-    correlationId: randomUUID(),
-    data: { identityId: viewer, groupId: formerGroup, membershipId: uuidv7(), reason: 'left' },
-  })
+  // The departures, as the host tells Profile of them.
+  await recordProfileDeparture({ commandId: uuidv7(), correlationId: randomUUID(), subjectId: leaver, groupId: group, endedAt: new Date().toISOString() })
+  await recordProfileDeparture({ commandId: uuidv7(), correlationId: randomUUID(), subjectId: viewer, groupId: formerGroup, endedAt: new Date().toISOString() })
 
   return { viewer, colleague, paused, stranger, leaver, group, formerGroup }
 })

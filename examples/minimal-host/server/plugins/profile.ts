@@ -3,9 +3,10 @@
  * counts against the 50-line budget (tests/minimal-host.test.ts).
  *
  * This host composes Profile alone, so Profile's own stand-ins answer where
- * Authentication and Identity would (nobody is signed in; only `self` is
- * disclosed). It opts in to them as a demonstration. The database comes
- * from the environment; without it startup fails closed.
+ * the host's sign-in and directory would (nobody is signed in; only `self`
+ * is disclosed), and requests have Profile's part only. It opts in to the
+ * stand-ins as a demonstration. The database comes from the environment;
+ * without it startup fails closed.
  */
 import pg from 'pg'
 

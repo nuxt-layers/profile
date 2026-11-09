@@ -98,7 +98,7 @@ export function createProfileTestPorts(options: { demonstration?: boolean } = {}
       },
     },
     requestCoordinator: {
-      exportPart: async ({ identityId, part }) => ({ member: part, identityId, note: 'test stand-in' }),
+      exportPart: async ({ identityId, part }) => ({ part, identityId, note: 'test stand-in' }),
     },
     clock,
     signIn(principalId, signInOptions = {}) {

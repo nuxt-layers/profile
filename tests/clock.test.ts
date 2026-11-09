@@ -98,7 +98,13 @@ describe('calendar deadlines', () => {
 
   it('finds the halfway point in elapsed time, whatever the zone', () => {
     same(london().midpoint('2026-10-10T08:00:00.000Z', '2026-11-10T08:00:00.000Z'), '2026-10-25T20:00:00.000Z')
-    same(london().midpoint('2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.003Z'), '2026-01-01T00:00:00.001Z')
+    // The handover's case, crossing the autumn change (25 October): 745 elapsed hours, so 372 hours 30 minutes on.
+    expect(london().compare(london().midpoint('2026-10-20T09:00:00Z', '2026-11-20T10:00:00Z'), '2026-11-04T21:30:00Z')).toBe(0)
+    // Across the spring change (29 March): 27 March 12:00 to 31 March 12:00 is 96 elapsed hours, so 48 hours on.
+    expect(london().compare(london().midpoint('2026-03-27T12:00:00Z', '2026-03-31T12:00:00Z'), '2026-03-29T12:00:00Z')).toBe(0)
+    // Either order, to the nanosecond: Clock keeps what epoch milliseconds would lose; an odd gap takes the earlier middle nanosecond.
+    expect(london().compare(london().midpoint('2026-01-01T00:00:00.003Z', '2026-01-01T00:00:00Z'), '2026-01-01T00:00:00.0015Z')).toBe(0)
+    expect(london().compare(london().midpoint('2026-01-01T00:00:00Z', '2026-01-01T00:00:00.000000003Z'), '2026-01-01T00:00:00.000000001Z')).toBe(0)
     expect(() => london().midpoint('not a time', '2026-01-01T00:00:00.000Z')).toThrow(ProfileFailure)
   })
 

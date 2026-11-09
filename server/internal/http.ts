@@ -127,8 +127,8 @@ export async function readJson<T>(event: H3Event, schema: z.ZodType<T>): Promise
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 /**
- * CSRF defence for the state-changing endpoints, as Identity's and
- * Authentication's: the request must carry an Origin (or, failing that, a
+ * CSRF defence for the state-changing endpoints: the request must carry an
+ * Origin (or, failing that, a
  * Referer) matching the configured base URL. Without one, every
  * state-changing request is refused.
  */

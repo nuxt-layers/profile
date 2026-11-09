@@ -4,7 +4,7 @@
 
 `@nuxt-layers/profile/contracts` is the only supported import path for this capability's types and pure helpers. It imports nothing but `zod`: no driver, key service or other capability's package.
 
-Profile answers two questions: **what describes this person**, and **what may this viewer see of it, now?** It is the only canonical source of the personal data that describes a person. Authentication never stores or seeds it (IAM architecture §1 ([resources](../RESOURCES.md))).
+Profile answers two questions: **what describes this person**, and **what may this viewer see of it, now?** It is the only canonical source of the personal data that describes a person. The host's sign-in service never stores or seeds it.
 
 ## 1. Boundaries
 
@@ -13,12 +13,12 @@ Profile answers two questions: **what describes this person**, and **what may th
 | Names, contact details and preferences that describe a person | **Profile** | Its own schema, encrypted per person (§6) |
 | Who may see each attribute | **Profile**, under the person's control | Disclosure settings (§4) |
 | Identities, groups, tenants, memberships, a person's standing | The host's directory | The disclosure-context port (§9) and Profile's own commands (§8.1), onto which the host maps its directory's changes |
-| Sign-in identifiers, credentials, sessions | Authentication | Never: a contact email here is independent of a sign-in email there |
-| Domain records | Domain capabilities | They store Identity's identifiers and ask Profile for names |
+| Sign-in identifiers, credentials, sessions | The host's sign-in service | Never: a contact email here is independent of a sign-in email there |
+| Domain records | Domain capabilities | They store the directory's identifiers and ask Profile for names |
 
 ## 2. Keys
 
-Every record is keyed by Identity's identifier (a UUIDv7), never derived from personal data. Only people have a record. A record is created, empty, when the host calls `provisionProfileRecord` (§8.1), or when the person first saves something if that has not happened yet.
+Every record is keyed by the host's directory identifier (a UUIDv7), never derived from personal data. Only people have a record. A record is created, empty, when the host calls `provisionProfileRecord` (§8.1), or when the person first saves something if that has not happened yet.
 
 ## 3. The record
 
@@ -200,7 +200,7 @@ History: package 0.2 added the HTTP API (§12), record versions, the `insufficie
 
 ## 12. HTTP API
 
-Under `/api/profile`. Every endpoint takes the person or viewer only from the host's subject resolver (Authentication), never from the request; parses bodies with strict schemas; and answers errors as `ProfileErrorBody`: the code, a localisation key, and a problem code for `validation-failed` and `conflict` only. State-changing requests must carry an `Origin` (or `Referer`) matching `NUXT_PROFILE_BASE_URL`; without one configured, they are all refused.
+Under `/api/profile`. Every endpoint takes the person or viewer only from the host's subject resolver (the signed-in principal), never from the request; parses bodies with strict schemas; and answers errors as `ProfileErrorBody`: the code, a localisation key, and a problem code for `validation-failed` and `conflict` only. State-changing requests must carry an `Origin` (or `Referer`) matching `NUXT_PROFILE_BASE_URL`; without one configured, they are all refused.
 
 | Endpoint | Does | Needs |
 |---|---|---|
@@ -222,7 +222,7 @@ A change sent against an older version than the one stored is refused with `conf
 
 Each viewer may make `PROFILE_LOOKUP_RATE_LIMIT` lookups (60 a minute, each up to 200 people) through the two lookup endpoints, counted in Profile's database. Host server code calling `lookupProfileDisplayNames` directly is not limited.
 
-There is no erasure endpoint: erasure follows account closure (Identity's process), or an operator's `eraseProfile` on a verified request. The person can remove any attribute themselves.
+There is no erasure endpoint: erasure follows account closure (`closeProfileSubject`, §8.1), or an operator's `eraseProfile` on a verified request. The person can remove any attribute themselves.
 
 `useProfile()` is the client side of this API, for the user experience only: it decides nothing. The default pages (§13) use it and nothing else.
 
@@ -241,7 +241,7 @@ The layer registers default pages and `Profile*` components (`modules/presentati
 
 The own-profile page links to both, and offers verification for each saved contact detail.
 
-**Group names.** Group names are Identity's. `ProfileGroupName` (prop `groupId`) reads "A group you left"; a host composing Identity backs it with a component of the same name that shows Identity's name for the group (`formerGroupNames` in Identity's own view of the person), so neither layer imports the other.
+**Group names.** Group names belong to the host's directory. `ProfileGroupName` (prop `groupId`) reads "A group you left"; a host backs it with a component of the same name that shows its directory's name for the group, so Profile imports nothing of the host's.
 
 `profile: { pages: { paths: { ... } } }` moves the pages (the person path must keep `:subjectId`); `profile: { pages: { enabled: false } }` keeps the components without the pages; `profile: { presentation: false }` registers nothing. Every page is sent with `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, unless the host sets those headers itself. The person page's document title is always "Profile": a name never reaches the browser's history or tab list from it.
 
@@ -251,22 +251,22 @@ The own-profile page links to both, and offers verification for each saved conta
 
 | Prop | Default | Meaning |
 |---|---|---|
-| `identityId` | — | Identity's identifier |
+| `identityId` | — | The person's identifier in the host's directory |
 | `groupId` | `null` | The group the name is shown in, for the departure data policy |
 | `purpose` | `listing` | `listing` leaves out a paused person; `attribution` keeps them named (§5) |
 | `link` | `false` | Links a disclosed name to the person page, when that page is on. A fallback never links |
 
-It renders "Member" on the server and until the answer arrives, and whenever Profile shows nothing, the same whether or not the person exists; "Former member N" and "Former member" come from the codes. Lookups go through `useProfileNames()`, in the browser only: every name a page asks for in one tick, for one group and purpose, is one request (up to 200 people) against the rate limit (§12); answers are kept for a minute and dropped by `forgetProfileNames()`, which a host calls when the viewer signs in or out. Identity's pages name people through `IdentityPersonName`; a host backs it with a component of that name that passes `identityId` and the group in view to `ProfilePersonName`, so neither layer imports the other.
+It renders "Member" on the server and until the answer arrives, and whenever Profile shows nothing, the same whether or not the person exists; "Former member N" and "Former member" come from the codes. Lookups go through `useProfileNames()`, in the browser only: every name a page asks for in one tick, for one group and purpose, is one request (up to 200 people) against the rate limit (§12); answers are kept for a minute and dropped by `forgetProfileNames()`, which a host calls when the viewer signs in or out. A host's own pages name people through `ProfilePersonName`, directly or through a person-name component of their own that passes `identityId` and the group in view to it, so Profile imports nothing of the host's.
 
 **Text.** Every word comes from `presentation/messages.ts` (en-GB) through `useProfileText()`. Hosts change wording or add locales in `app.config.ts` under `profile.messages`, set the locale with `NUXT_PUBLIC_PROFILE_LOCALE`, and point `profile.routes.signIn` (`NUXT_PUBLIC_PROFILE_ROUTES_SIGN_IN`) at their sign-in page, to which the pages link with `?redirect=`. Validation failures and conflicts are explained from the error's `reason` (`profile.reason.*`), otherwise from its code.
 
-**Styling.** The pages style only through Theme Manager's SemanticPresentationTheme vocabulary (`profileClasses`), its public `presentation.css` and its size scales, never raw colours or Tailwind's default sizes; a host imports `@nuxt-layers/profile/tailwind.css` after Theme Manager's stylesheet. Fill, Pen and Edge of one surface share role and state. The deliberate exceptions, the same as Identity's and Authentication's, which a host's theme must keep legible:
+**Styling.** The pages style only through the SemanticPresentationTheme vocabulary (`profileClasses`), the theme's public `presentation.css` and its size scales, never raw colours or Tailwind's default sizes; a host imports `@nuxt-layers/profile/tailwind.css` after its SemanticPresentationTheme stylesheet. Fill, Pen and Edge of one surface share role and state. The deliberate exceptions, which a host's theme must keep legible:
 
 - `pen-muted-default` on `fill-base-default`: hints, notes and definition terms on the card;
 - `edge-error-default` on `fill-input-default`: an invalid field's border;
 - `edge-base-active` on `fill-base-default`: the keyboard focus indicator.
 
-**Accessibility.** WCAG 2.2 AA: landmarks and one `h1` per page, labelled sections, fieldsets and fields, errors announced and focused (the first invalid field takes focus), status messages announced politely, keyboard operation throughout, 24-pixel targets, reflow at 320 CSS pixels. Browser tests (`tests/e2e/pages.spec.ts`) run axe's WCAG 2.2 AA rules and check non-text contrast with Theme Manager's real styles.
+**Accessibility.** WCAG 2.2 AA: landmarks and one `h1` per page, labelled sections, fieldsets and fields, errors announced and focused (the first invalid field takes focus), status messages announced politely, keyboard operation throughout, 24-pixel targets, reflow at 320 CSS pixels. Browser tests (`tests/e2e/pages.spec.ts`) run axe's WCAG 2.2 AA rules and check non-text contrast with the playground theme's real styles.
 
 ## 14. Data-subject requests and legal holds
 
@@ -311,7 +311,7 @@ The person verifies a saved `email` or `phone_number`: Profile sends a 6-digit c
 
 ## 16. Time
 
-Profile reads the current time from the clock the host supplies (`composeProfile({ clock: { now } })`), as iam-integration's architecture §7 ([resources](../RESOURCES.md)) asks of every member; without one, it uses the system clock. A host supplies the same clock to every member, or none.
+Profile reads the current time from the clock the host supplies (`composeProfile({ clock: { now } })`), as the suite's architecture §7 ([resources](../RESOURCES.md)) asks of every member; without one, it uses the system clock. A host supplies the same clock to every member, or none.
 
 - Every time Profile keeps or judges comes from the clock: the times it writes (records, keys, erasures, departures, requests, parts, holds, closures, codes, the outbox) and events' `occurredAt`; when a hold, a request's due date or escalation, an access archive, a verification code or its sending window, and a lookup rate-limit window ends; and whether a sign-in is recent enough for the endpoints that need one. The database judges no time of its own: each such time is passed to it from the clock.
 - A clock that throws, or answers anything but a valid `Date`, fails the operation as `unavailable`. Profile never falls back to another time.
@@ -319,7 +319,7 @@ Profile reads the current time from the clock the host supplies (`composeProfile
 
 ## 17. End of life
 
-Profile's part of iam-integration's group deletion and retention processes ([resources](../RESOURCES.md)).
+Profile's part of the suite's group deletion and retention processes ([resources](../RESOURCES.md)).
 
 **A deleted group.** When the host calls `disposeProfileGroup` (only once the group's disposal is due, after any hold on the group or its tenant has ended), Profile removes the group's departure records and, once none is left, its pseudonym counter; it keeps the departure of anyone a legal hold on Profile's part covers. A data-subject request naming the group no longer needs its rename: the group's part of it is done. It writes `profile.group-disposed`, which the host relays as Profile's confirmation.
 
@@ -330,12 +330,12 @@ Profile's part of iam-integration's group deletion and retention processes ([res
 
 ## 18. Shared shapes: open questions
 
-ADR-0012 §2 asks every capability for the same caller, access, mail and scheduled-work shapes ([resources](../RESOURCES.md)). Profile meets the clock, events and scheduled-work shapes. Three ports differ, and are kept until the architecture decides, because adopting the shared shape as written would lose something Profile relies on or break iam-integration's adapters:
+ADR-0012 §2 asks every capability for the same caller, access, mail and scheduled-work shapes ([resources](../RESOURCES.md)). Profile meets the clock, events and scheduled-work shapes. Three ports differ, and are kept until the architecture decides, because adopting the shared shape as written would lose something Profile relies on or break the host's adapters:
 
 | Shared shape | Profile's port | What blocks adopting it |
 |---|---|---|
 | `resolveCaller(event) → { tenantId, subjectId \| null, assurance }` | `subjectResolver.resolve(event) → { principalId, authenticatedAt, assurance } \| null` | The shared caller has no sign-in time, which Profile's recent-sign-in rule (§12) needs; Profile does not use `tenantId` |
-| `decide(caller, action, resource) → { allowed, reason }` | `accessDecision.allows({ subject, permission, groupId }) → boolean` | Equivalent meaning; a rename that iam-integration's `profileAccessDecisionFromAuthorisation` must follow in the same change |
+| `decide(caller, action, resource) → { allowed, reason }` | `accessDecision.allows({ subject, permission, groupId }) → boolean` | Equivalent meaning; a rename that the host's access-decision adapter must follow in the same change |
 | `send({ to, template, data })` | `notifier.send({ channel, to, purpose, attribute, code, locale, expiresInSeconds })` | Profile also sends by SMS; the shared shape has no channel |
 
-ADR-0012 §2a, which would place these meanings in each capability's contract, is a proposed amendment, not yet accepted. Profile changes these ports once the amendment is decided and iam-integration reconciles its adapters with it (`PLAN.md`, phase 11).
+ADR-0012 §2a, which would place these meanings in each capability's contract, is a proposed amendment, not yet accepted. Profile changes these ports once the amendment is decided, in the same change as the host's adapters (`PLAN.md`, phase 14).

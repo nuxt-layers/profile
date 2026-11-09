@@ -1,9 +1,9 @@
 /**
- * Utility classes from the SemanticPresentationTheme vocabulary (Theme
- * Manager's semantic presentation grammar), shared by the layer's components
- * and alike to Identity's and Authentication's. Kept as literal strings so
- * Tailwind finds them through tailwind.css. Sizes
- * come from Theme Manager's scales too, never Tailwind's defaults.
+ * Utility classes from the SemanticPresentationTheme vocabulary (the
+ * semantic presentation grammar the host's theme supplies), shared by the
+ * layer's components. Kept as literal strings so Tailwind finds them
+ * through tailwind.css. Sizes come from the theme's scales too, never
+ * Tailwind's defaults.
  *
  * Fill, Pen and Edge of one surface or control share a role and a state, and
  * advance together (hover, active and disabled). Text and borders without a

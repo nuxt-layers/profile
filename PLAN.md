@@ -17,12 +17,14 @@
 | 10. Trivial composition | ADR-0012: `examples/minimal-host` built and smoke-tested in CI within the 50-line budget; `composeProfile` as the only way to compose, in one call | Complete |
 | 11. Shared shapes | ADR-0012: stand-ins for every port but the database (`createProfileTestPorts`, refused outside tests unless a demonstration opts in), used by the minimal host; scheduled work in the shared shape (`profileTasks`); the caller, access and mail gaps recorded ([specification](docs/contracts.md) §18) | Complete |
 | 12. Layer isolation | Profile knows no other layer: request parts other than `profile` declared by the host in `composeProfile` (`requestParts`: coordinated, holdable, one directory part, defaults per type) and validated against the declaration, with migration `0006_host_declared_parts` relaxing the stored checks; Profile's own idempotent commands (`provisionProfileRecord`, `recordProfileDeparture`, `closeProfileSubject`, `recordProfilePause`, `recordProfileGroupRenamed`, `disposeProfileGroup`) replacing `applyProfileIdentityEvent`; ports, `ProfileSubject`, their enums and `PROFILE_PERMISSIONS` restated in Profile's own terms; contract version 2 | Complete |
-| 13. Wording sweep | The remaining documents, comments and presentation text that still describe other layers as built in | Planned |
+| 13. Wording sweep | Every comment and document (README, `CONTRACT.md`, specification, design decisions, threat model, `CLAUDE.md`, playground and tests) describes Profile's ports, commands, events and rules in its own terms: the host's directory, sign-in service and access decision, and the SemanticPresentationTheme capability; no behaviour change | Complete |
 | 14. Shared-shape adoption | Adopt `resolveCaller`, `decide` and `send` once ADR-0012 §2a is decided (the caller's sign-in time, the mail channel), in the same change as the host's adapters | Waiting on architecture |
 
 ## Dependencies on other capabilities
 
-- **Identity** (or any host directory) issues the identifiers and answers the disclosure-context port; the host maps its provisioning, departures, closure, pausing, renames and group disposal onto Profile's commands.
-- **Authentication** supplies the signed-in principal whose identifier is the subject or viewer. It is never a source of profile data.
-- **Authorisation** answers whether a viewer may see a group's suspended members (`profile.suspended-people:view`), and exports and erases its own part of a person's data.
-- **Authentication** exports its own part of a person's data (sign-in identifiers, factors, sessions); it is never a source of profile data.
+The capabilities Profile requires are named in `capability.json`; Profile itself states each dependency in its own terms, and the host translates.
+
+- **The host's directory** issues the identifiers and answers the disclosure-context port; the host maps its provisioning, departures, closure, pausing, renames and group disposal onto Profile's commands.
+- **The host's sign-in service** supplies the signed-in principal whose identifier is the subject or viewer, and exports its own part of a person's data. It is never a source of profile data.
+- **The host's access decision** answers whether a viewer may see a group's suspended members (`profile.suspended-people:view`).
+- **A SemanticPresentationTheme provider**, optional, styles the default pages.

@@ -12,11 +12,12 @@ import {
   provideProfileRequestParts,
   provideProfileRetention,
   provideProfileSubjectResolver,
+  provideProfileTimeZone,
   startProfileMigrations,
 } from '../internal/composition'
 
 const REQUIRED = ['database', 'keyWrapper', 'disclosureContext'] as const
-const KNOWN = new Set<string>([...REQUIRED, 'subjectResolver', 'requestCoordinator', 'accessDecision', 'notifier', 'clock', 'retention', 'requestParts'])
+const KNOWN = new Set<string>([...REQUIRED, 'subjectResolver', 'requestCoordinator', 'accessDecision', 'notifier', 'clock', 'timeZone', 'retention', 'requestParts'])
 const PORT_NAMES: Record<typeof REQUIRED[number], string> = {
   database: 'ProfileDatabase',
   keyWrapper: 'ProfileKeyWrapper',
@@ -52,6 +53,7 @@ export function composeProfile(composition: ProfileComposition): Promise<string[
     if (composition.accessDecision) provideProfileAccessDecision(composition.accessDecision)
     if (composition.notifier) provideProfileNotifier(composition.notifier)
     if (composition.clock) provideProfileClock(composition.clock)
+    if (composition.timeZone !== undefined) provideProfileTimeZone(composition.timeZone)
     if (composition.retention) provideProfileRetention(composition.retention)
     if (composition.requestParts) provideProfileRequestParts(composition.requestParts)
   }

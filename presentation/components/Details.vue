@@ -28,12 +28,13 @@ function blank(): Record<ProfileAttribute, string> {
 }
 watch(() => props.me, () => { draft.value = blank() })
 
-// The time zones the browser knows; rendered after hydration, as the server's list may differ.
-const timeZones = ref<string[]>([])
-onMounted(() => { timeZones.value = [...new Set(['UTC', ...Intl.supportedValuesOf('timeZone')])] })
+// Zones through Clock (Layer Standard §5): a fixed list, the same on the server and in every browser, so it renders during SSR.
+const clock = useClock()
+const timeZones = clock.timeZones()
+// A stored zone the list leaves out (a link such as Europe/Kiev, or one stored before Clock checked spelling) stays selectable, so it is never silently changed.
 const zoneOptions = computed(() => {
-  const current = draft.value.zoneinfo
-  return current && !timeZones.value.includes(current) ? [current, ...timeZones.value] : timeZones.value
+  const current = props.me.attributes.zoneinfo
+  return current && !timeZones.includes(current) ? [current, ...timeZones] : timeZones
 })
 
 const autocomplete: Record<ProfileAttribute, string> = {
@@ -71,7 +72,13 @@ function changes(): ProfileChanges | null {
       invalid[key] = messageOf(parsed.error.issues[0]?.message)
       continue
     }
-    if (parsed.data !== stored) found[key] = parsed.data
+    if (parsed.data === stored) continue
+    // The contract checks a zone's shape only; Clock decides whether it exists, spelt exactly.
+    if (key === 'zoneinfo' && !clock.isValidTimeZone(parsed.data)) {
+      invalid[key] = messageOf('invalid-time-zone')
+      continue
+    }
+    found[key] = parsed.data
   }
   problems.value = invalid
   return Object.keys(invalid).length > 0 ? null : found as ProfileChanges

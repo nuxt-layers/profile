@@ -14,6 +14,7 @@ import type {
 } from '../../contracts'
 import { ProfileCompositionError, ProfileFailure, resolveProfileRequestParts, resolveProfileRetention } from '../../contracts'
 import { runProfileMigrations } from '../database/migrations'
+import { isProfileTimeZone } from './clock'
 
 /**
  * PRIVATE. Composition registry. Hosts compose only through `composeProfile`
@@ -33,6 +34,7 @@ let requestCoordinator: ProfileRequestCoordinator | null = null
 let accessDecision: ProfileAccessDecision | null = null
 let notifier: ProfileNotifier | null = null
 let clock: ProfileClock | null = null
+let timeZone: string | null = null
 let retention: ProfileRetention = resolveProfileRetention()
 let requestParts: ProfileRequestParts = resolveProfileRequestParts()
 let migration: Promise<string[]> | null = null
@@ -133,6 +135,21 @@ export function provideProfileClock(next: ProfileClock): void {
   clock = next
 }
 
+/**
+ * Optional: the zone calendar deadlines are read in (the controller's
+ * jurisdiction). Without it, UTC. A name Clock does not accept, spelt
+ * exactly, fails at composition.
+ */
+export function provideProfileTimeZone(next: string): void {
+  if (!isProfileTimeZone(next)) throw new TypeError('composeProfile: `timeZone` expects an IANA time zone, spelt exactly, e.g. Europe/London.')
+  timeZone = next
+}
+
+/** The zone calendar deadlines are read in, or `undefined` for UTC. */
+export function useProfileTimeZone(): string | undefined {
+  return timeZone ?? undefined
+}
+
 /** The host's clock, or `undefined` for Clock's system clock. */
 export function useProfileClock(): ProfileClock | undefined {
   return clock ?? undefined
@@ -201,6 +218,7 @@ export function clearProfileComposition(): void {
   accessDecision = null
   notifier = null
   clock = null
+  timeZone = null
   retention = resolveProfileRetention()
   requestParts = resolveProfileRequestParts()
   migration = null

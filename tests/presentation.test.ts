@@ -136,7 +136,7 @@ describe('text', () => {
       name: ['', 'x'.repeat(201), 'a​b', 'Aлександр'],
       preferred_username: ['x'.repeat(65)],
       locale: ['not a locale'],
-      zoneinfo: ['Mars/Olympus'],
+      zoneinfo: ['Europe London'],
       email: ['nobody'],
       phone_number: ['07700 900123'],
     }

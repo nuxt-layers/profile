@@ -94,10 +94,13 @@ describe('Attributes', () => {
     expect(changes({ preferred_username: 'a'.repeat(65) }).success).toBe(false)
   })
 
-  it('accepts a BCP 47 locale, an IANA time zone, an email address and an E.164 number', () => {
+  it('accepts a BCP 47 locale, a time zone\'s shape, an email address and an E.164 number', () => {
     expect(changes({ locale: 'en-GB', zoneinfo: 'Europe/London', email: 'ada@example.com', phone_number: '+447700900123' }).success).toBe(true)
     expect(changes({ locale: 'english' }).success).toBe(false)
-    expect(changes({ zoneinfo: 'Mars/Olympus' }).success).toBe(false)
+    // Shape only: the contract imports only zod, so whether a zone exists is Clock's check, on the server and in the page.
+    expect(changes({ zoneinfo: '' }).success).toBe(false)
+    expect(changes({ zoneinfo: 'Europe London' }).success).toBe(false)
+    expect(changes({ zoneinfo: 'Mars/Olympus' }).success).toBe(true)
     expect(changes({ email: 'not an address' }).success).toBe(false)
     expect(changes({ phone_number: '07700 900123' }).success).toBe(false)
   })

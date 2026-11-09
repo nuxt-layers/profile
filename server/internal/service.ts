@@ -70,7 +70,7 @@ import {
 } from '../../contracts'
 import type { PoolClientLike } from '../database/migrations'
 import { quoteSchema } from '../database/migrations'
-import { profileTime } from './clock'
+import { isProfileTimeZone, profileTime } from './clock'
 import { aad, codeDigest, newCode, newDataKey, open, sameDigest, seal, uuidv7 } from './crypto'
 
 /**
@@ -95,6 +95,8 @@ export interface ServiceDependencies {
   notifier?: () => ProfileNotifier
   /** The host's clock (or Clock's system clock without it), read at each use; every time Profile keeps or judges comes from it. */
   clock?: () => ProfileClock | undefined
+  /** The zone calendar deadlines are read in, read at each use; UTC without it. */
+  timeZone?: () => string | undefined
   /** The retention periods; the defaults without them. */
   retention?: () => ProfileRetention
   /** The host's request parts beside Profile's own; Profile's only without them. */
@@ -138,10 +140,10 @@ function parse<T>(run: () => T): T {
   }
 }
 
-export function createService({ pool, schema, keys, disclosure, coordinator = () => missing('ProfileRequestCoordinator'), accessDecision = () => missing('ProfileAccessDecision'), notifier = () => missing('ProfileNotifier'), clock: hostClock = () => undefined, retention = () => resolveProfileRetention(), requestParts = () => resolveProfileRequestParts() }: ServiceDependencies) {
+export function createService({ pool, schema, keys, disclosure, coordinator = () => missing('ProfileRequestCoordinator'), accessDecision = () => missing('ProfileAccessDecision'), notifier = () => missing('ProfileNotifier'), clock: hostClock = () => undefined, timeZone: deadlineZone = () => undefined, retention = () => resolveProfileRetention(), requestParts = () => resolveProfileRequestParts() }: ServiceDependencies) {
   const s = quoteSchema(schema)
-  /** Times through Clock over the host's clock; an invalid answer fails closed as `unavailable`. */
-  const time = profileTime(hostClock)
+  /** Times through Clock over the host's clock, deadlines in the host's zone; an invalid answer fails closed as `unavailable`. */
+  const time = profileTime(hostClock, deadlineZone)
   const now = (): string => time.now()
 
   async function transaction<T>(run: (client: Client) => Promise<T>): Promise<T> {
@@ -487,6 +489,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
         groupIds: row.group_ids as string[],
         parts,
         archiveUntil: archiveUntil && time.compare(archiveUntil, now()) > 0 ? archiveUntil : null,
+        timeZone: time.timeZone(),
       }
     })
   }
@@ -535,7 +538,7 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
     return transaction(async (client) => {
       const outbox = await client.query(`delete from ${s}."outbox" where "published_at" is not null and "published_at" <= $1 returning 1`, [before(periods.outboxDays)])
       // Requests and holds through the owner's function, which holds the floors and the hold rule itself.
-      const { rows } = await client.query(`select ${s}.apply_retention($1, $2, $3) as "result"`, [at, periods.requestDays, periods.endedHoldDays])
+      const { rows } = await client.query(`select ${s}.apply_retention_before($1, $2, $3) as "result"`, [at, before(periods.requestDays), before(periods.endedHoldDays)])
       const records = rows[0]?.result as { requests: number, legalHolds: number }
       const counts = { outboxEvents: outbox.rows.length, requests: records.requests, legalHolds: records.legalHolds }
       if (counts.outboxEvents + counts.requests + counts.legalHolds > 0) await emit(client, event('profile.retention-applied', counts, uuidv7(time.epochMilliseconds(at))))
@@ -763,6 +766,8 @@ export function createService({ pool, schema, keys, disclosure, coordinator = ()
       const subjectId = parse(() => identifierSchema.parse(input.subjectId))
       const correlationId = parse(() => correlationIdSchema.parse(input.correlationId))
       const changes = parse(() => profileChangesSchema.parse(input.changes))
+      // The contract checks the shape only (it imports only zod); Clock decides whether the zone exists, spelt exactly.
+      if (typeof changes.zoneinfo === 'string' && !isProfileTimeZone(changes.zoneinfo)) throw new ProfileFailure('validation-failed', 'invalid-time-zone')
       const expected = expectedVersionOf(input.expectedVersion)
       return transaction(async (client) => {
         await checkVersion(client, subjectId, expected)

@@ -171,6 +171,12 @@ export interface ProfileComposition {
   notifier?: ProfileNotifier
   /** Clock's system clock without it. */
   clock?: ProfileClock
+  /**
+   * The IANA zone the controller's deadlines are read in (calendar days and
+   * months across daylight saving), e.g. `Europe/London`; UTC without it.
+   * Spelt exactly as IANA does; checked with Clock's `isValidTimeZone`.
+   */
+  timeZone?: string
   /** The defaults without it. */
   retention?: ProfileRetentionInput
   /** The parts of data-subject requests beside Profile's own; without it, Profile's part only. */

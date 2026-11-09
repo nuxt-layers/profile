@@ -28,6 +28,10 @@ const requests = computed<RequestView[]>(() => data.value?.requests ?? [])
 // Dates through Clock (Layer Standard §5), in the pages' locale and Clock's configured time zone, so SSR and hydration agree.
 const clock = useClock({ locale })
 const dateOf = (instant: string) => clock.format(clock.parse('instant', instant), { dateStyle: 'long' })
+// A deadline is shown on the day it falls in the zone it was computed in, named, since a reader elsewhere could see another date.
+const deadlineOf = (instant: string, timeZone: string) => clock.isValidTimeZone(timeZone)
+  ? t('profile.requests.dateInZone', { date: clock.format(clock.parse('instant', instant), { dateStyle: 'long', timeZone }), zone: timeZone })
+  : dateOf(instant)
 
 async function open(type: 'access' | 'restriction') {
   notice.value = null
@@ -97,7 +101,7 @@ async function download(request: RequestView) {
             <dt :class="profileClasses.term">{{ t('profile.requests.openedAt') }}</dt>
             <dd :class="profileClasses.definition">{{ dateOf(request.openedAt) }}</dd>
             <dt :class="profileClasses.term">{{ t('profile.requests.dueAt') }}</dt>
-            <dd :class="profileClasses.definition">{{ dateOf(request.dueAt) }}</dd>
+            <dd :class="profileClasses.definition">{{ deadlineOf(request.dueAt, request.timeZone) }}</dd>
             <template v-for="part in request.parts" :key="part.part">
               <dt :class="profileClasses.term">{{ partName(part.part) }}</dt>
               <dd :class="profileClasses.definition">{{ t(`profile.requests.partStatus.${part.status}`) }}</dd>
@@ -105,7 +109,7 @@ async function download(request: RequestView) {
           </dl>
           <div v-if="request.archiveUntil" :class="profileClasses.row" class="mt-2">
             <button type="button" :class="profileClasses.secondaryButton" :disabled="action.disabled.value" @click="download(request)">{{ t('profile.requests.download') }}</button>
-            <span :class="profileClasses.muted">{{ t('profile.requests.availableUntil', { date: dateOf(request.archiveUntil) }) }}</span>
+            <span :class="profileClasses.muted">{{ t('profile.requests.availableUntil', { date: deadlineOf(request.archiveUntil, request.timeZone) }) }}</span>
           </div>
         </li>
       </ul>

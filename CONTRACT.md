@@ -58,9 +58,10 @@ export default defineNitroPlugin(() => {
 | `profile.pages.enabled` | `true` | `false` keeps the components without the pages |
 | `profile.pages.paths` | see Screens | Moves the pages; the person path must keep `:subjectId` |
 | `profile.messages` (`app.config.ts`) | `presentation/messages.ts` | Wording overrides and further locales |
+| `composeProfile({ timeZone })` | `UTC` | The IANA zone the controller's deadlines are read in, spelt exactly (Clock's `isValidTimeZone`), e.g. `Europe/London`. Requests' due dates, archive windows, escalation, the legal-hold limit and retention are calendar days and months in this zone, across daylight saving. It is a jurisdiction setting, not Clock's presentation `timeZone`. A name Clock rejects fails composition |
 | `composeProfile({ retention: { outboxDays, requestDays, endedHoldDays } })` | 30, 730, 365 | Retention, within `PROFILE_RETENTION_BOUNDS` (7–365, 365–2555, 30–2555). Shorter than a default needs a `riskTreatment` reference |
 
-Fixed policies, exported from the contract: `PROFILE_LOOKUP_RATE_LIMIT` (60 lookups a minute per viewer, each up to 200 people), `PROFILE_STEP_UP_SECONDS` (900: "recent sign-in"), `PROFILE_REQUEST_POLICY` (requests due one calendar month after opening, escalated 7 days before).
+Fixed policies, exported from the contract: `PROFILE_LOOKUP_RATE_LIMIT` (60 lookups a minute per viewer, each up to 200 people), `PROFILE_STEP_UP_SECONDS` (900: "recent sign-in"), `PROFILE_REQUEST_POLICY` (requests due one calendar month after opening, escalated 7 days before), each in `timeZone`.
 
 ## Host passes
 
@@ -238,4 +239,5 @@ Any screen drawing Profile, the default ones included, must:
 - A held closed record is readable by no function; `eraseProfile` is refused until the hold ends.
 - Operators' functions are server-only; exposing them over HTTP breaks the contract.
 - A Profile contact email is independent of the host's sign-in email.
-- Every time Profile answers is a canonical UTC instant string from Clock; dates on the default pages are shown in Clock's configured `timeZone` (UTC unless the host sets it).
+- Every time Profile answers is a canonical UTC instant string from Clock; dates on the default pages are shown in Clock's configured `timeZone` (UTC unless the host sets it), except a request's due date and archive date, which are shown in the deadline zone (`RequestView.timeZone`) and name it.
+- `zoneinfo` is checked by Clock (`isValidTimeZone`, spelt exactly, capitals included) on the server and in the details page; `attributeSchemas.zoneinfo` checks its shape only. The picker lists Clock's `timeZones()`; a link such as `Europe/Kiev` is accepted, and a stored value outside the list stays selectable.

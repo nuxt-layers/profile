@@ -136,7 +136,6 @@ export {
   REQUEST_PART_PATTERN,
   REQUEST_STATUSES,
   REQUEST_TYPES,
-  requestDueAt,
   requestPartDeclarationSchema,
   requestPartSchema,
   requestPartsDeclarationSchema,

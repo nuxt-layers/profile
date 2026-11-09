@@ -39,7 +39,7 @@ import {
  * takes the person (`subjectId`) or the viewer (`viewerId`) from the caller,
  * which must take it from the signed-in principal, never from a request
  * body. Every one fails closed with `ProfileFailure`. Every time they keep
- * or judge comes from the host's clock (`composeProfile`'s `clock`), or the
+ * or judge comes from the host's clock (`composeProfile`'s `clock`), or Clock's
  * system clock when none is supplied.
  */
 
@@ -56,8 +56,8 @@ async function service() {
     notifier: useProfileNotifier,
     retention: useProfileRetention,
     requestParts: useProfileRequestParts,
-    // Read at each use, so every time comes from the host's clock (or the system clock).
-    now: () => useProfileClock().now(),
+    // Read at each use, so every time comes from the host's clock (or Clock's system clock).
+    clock: useProfileClock,
   })
 }
 

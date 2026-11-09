@@ -42,10 +42,11 @@
     "test:e2e": "pnpm build:playground && playwright test"
   },
   "dependencies": {
+    "@nuxt-layers/clock": "github:nuxt-layers/clock#master",
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "nuxt": "^4.5.0"
+    "nuxt": "^4.6.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -64,6 +65,6 @@
   },
   "packageManager": "pnpm@12.16.1",
   "engines": {
-    "node": ">=22"
+    "node": ">=26.13"
   }
 }

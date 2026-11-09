@@ -138,15 +138,18 @@ export interface ProfileNotifier {
 }
 
 /**
- * Clock port (docs/contracts.md §16): the current time. Optional; without it Profile uses the system clock. Every
- * time Profile keeps or judges comes from it: timestamps, events'
- * `occurredAt`, expiries, due dates, hold ends and whether a sign-in is
- * recent. Trusted like a key, since it can make holds or expiries end
- * early. An answer that is not a valid `Date`, or a failure, fails the
- * operation closed as `unavailable`.
+ * Clock port (docs/contracts.md §16): ADR-0012's shared clock shape, the same
+ * `ClockPort` the host gives Clock and every capability. `now()` is
+ * synchronous and answers a UTC ISO 8601 instant, such as
+ * `2026-11-05T14:30:00.000Z`. Optional; without it Profile uses Clock's system
+ * clock. Every time Profile keeps or judges comes from it, through Clock:
+ * timestamps, events' `occurredAt`, expiries, due dates, hold ends and whether
+ * a sign-in is recent. Trusted like a key, since it can make holds or expiries
+ * end early. An answer Clock rejects, or a failure, fails the operation
+ * closed as `unavailable`.
  */
 export interface ProfileClock {
-  now(): Date
+  now(): string
 }
 
 /**
@@ -166,7 +169,7 @@ export interface ProfileComposition {
   accessDecision?: ProfileAccessDecision
   /** For contact-detail verification. */
   notifier?: ProfileNotifier
-  /** The system clock without it. */
+  /** Clock's system clock without it. */
   clock?: ProfileClock
   /** The defaults without it. */
   retention?: ProfileRetentionInput

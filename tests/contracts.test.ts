@@ -178,10 +178,4 @@ describe('Attributes', () => {
       expect(readFileSync(join(root, file), 'utf8'), file).not.toMatch(/\bIdentity\b|Identity's|\bAuthentication\b|\bAuthorisation\b|iam-integration|configuration layer/)
     }
   })
-
-  it('dates a request a calendar month on, or to the month\'s last day', () => {
-    expect(contracts.requestDueAt(new Date('2026-10-10T08:00:00.000Z')).toISOString()).toBe('2026-11-10T08:00:00.000Z')
-    expect(contracts.requestDueAt(new Date('2027-01-31T08:00:00.000Z')).toISOString()).toBe('2027-02-28T08:00:00.000Z')
-    expect(contracts.requestDueAt(new Date('2026-12-15T00:00:00.000Z')).toISOString()).toBe('2027-01-15T00:00:00.000Z')
-  })
 })

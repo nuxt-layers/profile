@@ -15,7 +15,7 @@ import {
   UUID_V7_PATTERN,
 } from '../../contracts'
 import { useProfileClock, useProfileSubjectResolver } from './composition'
-import { timeFrom } from './clock'
+import { profileTime } from './clock'
 
 /**
  * PRIVATE. The HTTP boundary of `/api/profile/*` (docs/contracts.md §12).
@@ -95,9 +95,20 @@ export async function requireSubject(event: H3Event): Promise<ProfileSubject> {
  * `PROFILE_STEP_UP_SECONDS`, judged by the host's clock (`unavailable` if it
  * answers an invalid time).
  */
-export function requireRecentSignIn(subject: ProfileSubject, now: Date = timeFrom(useProfileClock())): void {
-  const age = (now.getTime() - Date.parse(subject.authenticatedAt)) / 1000
-  if (!(age >= -60 && age <= PROFILE_STEP_UP_SECONDS)) throw new ProfileFailure('insufficient-assurance')
+export function requireRecentSignIn(subject: ProfileSubject, now?: string): void {
+  const time = profileTime(useProfileClock())
+  const at = now ?? time.now()
+  let authenticatedAt: string
+  try {
+    authenticatedAt = time.canonical(subject.authenticatedAt)
+  }
+  catch {
+    throw new ProfileFailure('insufficient-assurance')
+  }
+  // Recent: no more than a minute ahead of the clock, and no older than the step-up window.
+  if (time.compare(authenticatedAt, time.addSeconds(at, 60)) > 0 || time.compare(authenticatedAt, time.addSeconds(at, -PROFILE_STEP_UP_SECONDS)) < 0) {
+    throw new ProfileFailure('insufficient-assurance')
+  }
 }
 
 /** A route parameter that must be an identifier. */

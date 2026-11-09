@@ -11,6 +11,12 @@
   ],
   "requires": [
     {
+      "capability": "Clock",
+      "contractVersion": "1",
+      "optional": false,
+      "purpose": "every date and time Profile keeps, judges or shows: the current time through the ClockPort-shaped ProfileClock, arithmetic, comparison, interchange and formatting; a package dependency (@nuxt-layers/clock, following master) that the layer extends"
+    },
+    {
       "capability": "Identity",
       "contractVersion": "1",
       "optional": false,

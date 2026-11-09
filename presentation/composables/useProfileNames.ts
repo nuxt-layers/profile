@@ -18,7 +18,7 @@ interface Batch { ids: Set<string>, waiters: Map<string, ((name: DisplayName) =>
 export const PROFILE_NAME_CACHE_MS = 60_000
 
 const HIDDEN: DisplayName = Object.freeze({ kind: 'hidden' })
-const cache = new Map<string, { name: DisplayName, until: number }>()
+const cache = new Map<string, { name: DisplayName, until: string }>()
 const batches = new Map<string, Batch>()
 
 /** PUBLIC. Drops every cached name: call it when the viewer signs in or out. */
@@ -28,6 +28,9 @@ export function forgetProfileNames(): void {
 
 export function useProfileNames() {
   const profile = useProfile()
+  // Times through Clock (Layer Standard §5): canonical instants, compared by Clock.
+  const clock = useClock()
+  const instant = (value: string) => ({ kind: 'instant' as const, value })
 
   async function flush(key: string, groupId: string | null, purpose: LookupPurpose) {
     const batch = batches.get(key)!
@@ -43,7 +46,7 @@ export function useProfileNames() {
         // Unavailable or rate-limited: show the neutral fallback, and ask again next time.
       }
       const found = new Map(answers.map(answer => [answer.subjectId, answer.displayName]))
-      const until = Date.now() + PROFILE_NAME_CACHE_MS
+      const until = clock.add(instant(clock.now()), { seconds: PROFILE_NAME_CACHE_MS / 1000 }).value
       for (const id of chunk) {
         const name = found.get(id) ?? HIDDEN
         if (found.has(id)) cache.set(`${key}|${id}`, { name, until })
@@ -57,7 +60,7 @@ export function useProfileNames() {
     if (import.meta.server) return Promise.resolve(HIDDEN)
     const key = `${groupId ?? '-'}|${purpose}`
     const cached = cache.get(`${key}|${identityId}`)
-    if (cached && cached.until > Date.now()) return Promise.resolve(cached.name)
+    if (cached && clock.compare(instant(cached.until), instant(clock.now())) > 0) return Promise.resolve(cached.name)
     let batch = batches.get(key)
     if (!batch) {
       batch = { ids: new Set(), waiters: new Map() }

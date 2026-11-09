@@ -14,7 +14,6 @@ import type {
 } from '../../contracts'
 import { ProfileCompositionError, ProfileFailure, resolveProfileRequestParts, resolveProfileRetention } from '../../contracts'
 import { runProfileMigrations } from '../database/migrations'
-import { systemProfileClock } from './clock'
 
 /**
  * PRIVATE. Composition registry. Hosts compose only through `composeProfile`
@@ -134,9 +133,9 @@ export function provideProfileClock(next: ProfileClock): void {
   clock = next
 }
 
-/** The host's clock, or the system clock when none is supplied. */
-export function useProfileClock(): ProfileClock {
-  return clock ?? systemProfileClock
+/** The host's clock, or `undefined` for Clock's system clock. */
+export function useProfileClock(): ProfileClock | undefined {
+  return clock ?? undefined
 }
 
 export function useProfileRequestCoordinator(): ProfileRequestCoordinator {

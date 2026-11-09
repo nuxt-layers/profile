@@ -13,6 +13,7 @@ import type {
   SubjectStanding,
 } from '../../contracts'
 import { createLocalProfileKeyWrapper } from './profile-keys'
+import { timeFrom } from '../internal/clock'
 
 /** One message the recording notifier was asked to deliver. */
 export type ProfileTestNotification = Parameters<ProfileNotifier['send']>[0]
@@ -30,17 +31,17 @@ export interface ProfileTestPorts {
   notifier: ProfileNotifier
   /** Answers every coordinated part with a small stand-in bundle. */
   requestCoordinator: ProfileRequestCoordinator
-  /** The system clock until `setNow`; `setNow(null)` returns to it. */
+  /** Clock's system clock until `setNow`; `setNow(null)` returns to it. */
   clock: ProfileClock
 
-  signIn(principalId: string, options?: { authenticatedAt?: Date, assurance?: ProfileSubject['assurance'] }): void
+  signIn(principalId: string, options?: { authenticatedAt?: string, assurance?: ProfileSubject['assurance'] }): void
   signOut(): void
   relate(viewerId: string, subjectId: string, relationship: Relationship, groupId?: string | null): void
   setStanding(subjectId: string, standing: SubjectStanding): void
   setDeparturePolicy(groupId: string, attribution: DepartureAttribution | null): void
   grant(viewerId: string, permission: string, groupId: string): void
   readonly sent: ProfileTestNotification[]
-  setNow(now: Date | null): void
+  setNow(now: string | null): void
 }
 
 /**
@@ -59,13 +60,13 @@ export function createProfileTestPorts(options: { demonstration?: boolean } = {}
   }
 
   let principal: ProfileSubject | null = null
-  let now: Date | null = null
+  let now: string | null = null
   const relationships = new Map<string, Relationship>()
   const standings = new Map<string, SubjectStanding>()
   const departurePolicies = new Map<string, DepartureAttribution>()
   const grants = new Set<string>()
   const sent: ProfileTestNotification[] = []
-  const clock: ProfileClock = { now: () => (now ? new Date(now) : new Date()) }
+  const clock: ProfileClock = { now: () => now ?? timeFrom() }
 
   return {
     keyWrapper: createLocalProfileKeyWrapper({ keys: { test: randomBytes(32).toString('base64') }, current: 'test' }),
@@ -84,7 +85,7 @@ export function createProfileTestPorts(options: { demonstration?: boolean } = {}
               : relationships.get(`${request.viewerId}|${subjectId}|${groupId ?? '-'}`) ?? 'none' as const,
             standing: standings.get(subjectId) ?? 'visible' as const,
           })),
-          readAt: clock.now().toISOString(),
+          readAt: clock.now(),
         }
       },
     },
@@ -104,7 +105,7 @@ export function createProfileTestPorts(options: { demonstration?: boolean } = {}
     signIn(principalId, signInOptions = {}) {
       principal = {
         principalId,
-        authenticatedAt: (signInOptions.authenticatedAt ?? clock.now()).toISOString(),
+        authenticatedAt: signInOptions.authenticatedAt ?? clock.now(),
         assurance: signInOptions.assurance ?? { level: 'aal2', phishingResistant: true },
       }
     },

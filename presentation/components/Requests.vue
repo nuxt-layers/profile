@@ -11,7 +11,7 @@ import type { RequestView } from '../../contracts'
  */
 const profile = useProfile()
 const action = useProfileAction()
-const { t, locale } = useProfileText()
+const { t } = useProfileText()
 
 /** A part's name: the host's wording for a part it declared, or the general fallback. */
 function partName(part: string): string {
@@ -25,13 +25,8 @@ const notice = ref<string | null>(null)
 const { data, error, refresh } = await useAsyncData('profile-requests', () => profile.requests())
 const failure = computed(() => (error.value ? profileErrorOf(error.value)?.code ?? 'unavailable' : null))
 const requests = computed<RequestView[]>(() => data.value?.requests ?? [])
-// Dates through Clock (Layer Standard §5), in the pages' locale and Clock's configured time zone, so SSR and hydration agree.
-const clock = useClock({ locale })
-const dateOf = (instant: string) => clock.format(clock.parse('instant', instant), { dateStyle: 'long' })
-// A deadline is shown on the day it falls in the zone it was computed in, named, since a reader elsewhere could see another date.
-const deadlineOf = (instant: string, timeZone: string) => clock.isValidTimeZone(timeZone)
-  ? t('profile.requests.dateInZone', { date: clock.format(clock.parse('instant', instant), { dateStyle: 'long', timeZone }), zone: timeZone })
-  : dateOf(instant)
+// Dates through Clock (Layer Standard §5): the person's in their own time zone (zoneinfo); deadlines in the zone they were counted in, named.
+const { dateOf, deadlineOf } = await useProfileDates()
 
 async function open(type: 'access' | 'restriction') {
   notice.value = null

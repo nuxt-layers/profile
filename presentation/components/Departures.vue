@@ -10,7 +10,7 @@ import type { ProfileDepartureView } from '../../contracts'
  */
 const profile = useProfile()
 const action = useProfileAction()
-const { t, locale } = useProfileText()
+const { t } = useProfileText()
 const routes = useProfileRoutes()
 const notice = ref<string | null>(null)
 const confirming = ref<string | null>(null)
@@ -18,9 +18,8 @@ const confirming = ref<string | null>(null)
 const { data, error, refresh } = await useAsyncData('profile-departures', () => profile.departures())
 const failure = computed(() => (error.value ? profileErrorOf(error.value)?.code ?? 'unavailable' : null))
 const departures = computed<ProfileDepartureView[]>(() => data.value?.departures ?? [])
-// Dates through Clock (Layer Standard §5), in the pages' locale and Clock's configured time zone, so SSR and hydration agree.
-const clock = useClock({ locale })
-const dateOf = (instant: string) => clock.format(clock.parse('instant', instant), { dateStyle: 'long' })
+// Dates through Clock (Layer Standard §5), in the person's own time zone (their zoneinfo), the same on the server and in the browser.
+const { dateOf } = await useProfileDates()
 
 async function anonymise(groupId: string) {
   notice.value = null

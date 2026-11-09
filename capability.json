@@ -79,6 +79,6 @@
   ],
   "integration": {
     "consumers": "domain capabilities store identifiers only and ask Profile for display names; they never read the profile schema",
-    "composition": "host supplies ports from a Nitro plugin; persistence follows ADR-0002 and ADR-0006; identities and memberships belong to Identity"
+    "composition": "host supplies ports from a Nitro plugin; persistence follows ADR-0002 and ADR-0006; identities and memberships belong to the host's directory"
   }
 }

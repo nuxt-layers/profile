@@ -4,7 +4,7 @@ import { ORIGIN } from './constants'
 
 /**
  * Profile's default pages and ProfilePersonName in a real browser, against
- * the built playground with Theme Manager's real styles: the journeys,
+ * the built playground with its theme's real styles: the journeys,
  * keyboard-only use, reflow, and axe checks against the WCAG 2.2 AA rules.
  */
 
@@ -27,7 +27,7 @@ async function seed(request: APIRequestContext): Promise<Scenario> {
 }
 
 /**
- * Stands in for Authentication: the playground reads the signed-in identity
+ * Stands in for the host's sign-in service: the playground reads the signed-in identity
  * from this cookie in test mode, and the sign-in time from another.
  */
 async function signInAs(context: BrowserContext, identityId: string, signedInAt?: number) {

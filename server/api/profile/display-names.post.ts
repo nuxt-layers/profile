@@ -6,7 +6,8 @@ import { consumeProfileLookup, lookupProfileDisplayNames } from '../../utils/pro
  * POST /api/profile/display-names — `{ subjectIds, groupId?, purpose }`:
  * up to 200 display names as the signed-in viewer may see them. Rate-limited
  * per viewer. An `administration` lookup names its group, and Profile asks
- * Authorisation whether the viewer may see that group's suspended members.
+ * the host's access decision whether the viewer may see that group's
+ * suspended members.
  */
 export default profileHandler(async (event) => {
   const subject = await requireSubject(event)

@@ -1,5 +1,5 @@
 # Which dependencies may run install scripts (pnpm 12 fails on any not
-# decided here). Theme Manager is built from Git. esbuild's script only
+# decided here). The development theme is built from Git. esbuild's script only
 # checks its platform binary, which the @esbuild/* optional dependency
 # already supplies, so it stays off, as it was under pnpm 10.
 allowBuilds:

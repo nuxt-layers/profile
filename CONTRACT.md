@@ -213,7 +213,7 @@ Request and hold events name parts as stored: `profile` and the host's names.
 
 Components: `ProfilePersonName` (props `identityId`, `groupId = null`, `purpose = 'listing'`, `link = false`; renders "Member" until and unless a name is disclosed) and `ProfileGroupName` (prop `groupId`; the host overrides it with a component of the same name showing the host's group name). Composables: `useProfile()`, `useProfileText()`, `useProfileAction()`, `useProfileRoutes()`, `useProfileNames()`, `forgetProfileNames()` (call when the viewer changes without a page load).
 
-Styling needs Theme Manager's SemanticPresentationTheme (optional): import its `presentation.css`, then `@nuxt-layers/profile/tailwind.css`, in the host's Tailwind stylesheet. Without it, pages work unstyled. Switch off with `profile.pages.enabled: false` or `profile.presentation: false`.
+Styling needs a provider of the SemanticPresentationTheme capability (optional), composed by the host: import that provider's `presentation.css`, then `@nuxt-layers/profile/tailwind.css`, in the host's Tailwind stylesheet. Without it, pages work unstyled. Switch off with `profile.pages.enabled: false` or `profile.presentation: false`.
 
 ## Headless surface
 

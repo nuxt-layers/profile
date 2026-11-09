@@ -19,11 +19,10 @@ import { DELIBERATE_PAIRINGS } from '../presentation/pairings'
 import { profileClasses } from '../presentation/utils/profile-classes'
 
 /**
- * Theme Manager's Semantic Presentation Guide: Fill, Pen and Edge of one
- * surface share a role and state, and cross-role pairings are deliberate.
- * Every utility, sizes included, resolves to a Theme Manager token. The same
- * rules as Identity's and Authentication's pages, so the suite's pages look
- * and behave alike.
+ * The SemanticPresentationTheme rules: Fill, Pen and Edge of one surface
+ * share a role and state, and cross-role pairings are deliberate. Every
+ * utility, sizes included, resolves to a token of the theme the playground
+ * composes.
  */
 
 const CARD = 'fill-base-default'
@@ -85,7 +84,7 @@ describe('semantic presentation', () => {
     }
   })
 
-  it('never reaches into Theme Manager private variables', () => {
+  it('never reaches into the theme\'s private variables', () => {
     const files = [
       'tailwind.css',
       'playground/app/assets/css/main.css',
@@ -95,7 +94,7 @@ describe('semantic presentation', () => {
     expect(offending).toEqual([])
   })
 
-  it('resolves every utility to a Theme Manager token, never a Tailwind default', async () => {
+  it('resolves every utility to a theme token, never a Tailwind default', async () => {
     const classes = candidates()
     const css = await compileWithThemeManager(classes)
     const offGrammar = classes.filter((name) => {
@@ -204,7 +203,7 @@ function candidates(): string[] {
   return [...found]
 }
 
-/** Compiles classes against Theme Manager's public presentation.css export (never its private paths). */
+/** Compiles classes against the theme's public presentation.css export (never its private paths). */
 async function compileWithThemeManager(classes: string[]): Promise<string> {
   const require = createRequire(import.meta.url)
   const { compile } = await import(require.resolve('@tailwindcss/node', { paths: [dirname(require.resolve('tailwindcss/package.json'))] }))

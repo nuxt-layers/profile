@@ -1,12 +1,11 @@
 /**
  * Pen or Edge tokens drawn on a fill of another role or state, each because
  * the meaning requires it, and each listed in docs/contracts.md (§13). A
- * host's theme must keep these legible. The same as Identity's and
- * Authentication's.
+ * host's theme must keep these legible.
  *
  * Kept outside presentation/utils so that Nuxt does not auto-import it into
- * hosts, where Identity's and Authentication's lists of the same name would
- * collide; hosts and tests import it from `./presentation`.
+ * hosts, where another layer's list of the same name would collide; hosts
+ * and tests import it from `./presentation`.
  */
 export const DELIBERATE_PAIRINGS = [
   // Hints, notes and definition terms on the card.

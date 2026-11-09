@@ -1,8 +1,7 @@
 import { z } from 'zod'
 
 /**
- * Safe names (iam-integration improvement register item 6), the same rules
- * Identity applies to group names, here for the names that describe a
+ * Safe names: the rules Profile applies to the names that describe a
  * person.
  *
  * A safe name is:

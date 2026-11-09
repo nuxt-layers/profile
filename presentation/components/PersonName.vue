@@ -3,9 +3,9 @@ import type { DisplayName, LookupPurpose } from '../../contracts'
 
 /**
  * PUBLIC. A person's name as Profile discloses it to the signed-in viewer,
- * for any page that names people by Identity's identifier. A host backs
- * Identity's `IdentityPersonName` with it by a component of that name that
- * passes `identityId` through, with the group in view as `groupId`.
+ * for any page that names people by the directory's identifier. A host
+ * backs its own person-name component with it, passing the identifier
+ * through as `identityId` and the group in view as `groupId`.
  *
  * - `groupId`: the group the name is shown in, so a leaver is named under
  *   that group's departure data policy;

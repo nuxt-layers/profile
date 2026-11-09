@@ -4,6 +4,7 @@
 
 ## 2026-11-09
 
+- The rename-escalation halfway point now uses Clock's `midpoint` (nuxt-layers/clock#29, added by Clock's PR #30; the lockfile follows Clock's `master` at `96e71c0`). It keeps Clock's full nanosecond precision instead of averaging epoch milliseconds; existing stored values are unchanged. Profile works out no other elapsed difference by hand: its lookup rate-limit window and UUIDv7 identifiers use epoch milliseconds as a protocol format, not as a difference.
 - **Clock's new exports adopted** (nuxt-layers/clock#25, #26, #27, resolved by Clock's PR #28; the lockfile follows Clock's `master` at `bab3caa`).
   - Errors: Profile recognises Clock's failures with `instanceof ClockError` from `@nuxt-layers/clock/server`, no longer by reading a `CLOCK_` code prefix. They still fail closed as `unavailable`.
   - Zones: Profile's own zone list (`Intl.supportedValuesOf('timeZone')` plus `UTC`) is gone. `zoneinfo` is validated by Clock's `isValidTimeZone` in `updateProfile` and in the details page; `attributeSchemas.zoneinfo` now checks its shape only (non-empty, no spaces, at most 64 characters), since the contract imports only zod. Names must be spelt exactly (`europe/london` is refused); links such as `Europe/Kiev` stay valid. The picker lists Clock's `timeZones()` and renders during SSR; a stored value outside the list stays selectable.
